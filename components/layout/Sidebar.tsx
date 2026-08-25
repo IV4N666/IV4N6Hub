@@ -63,7 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
   ];
 
   return (
-    <aside className="hidden md:flex w-64 flex-col justify-between border-r border-slate-800 bg-slate-900/60 p-4 backdrop-blur-xl">
+    <aside className="hidden md:flex w-64 flex-col justify-between border-r border-slate-800/80 bg-slate-950/50 p-4 backdrop-blur-xl">
       <div className="space-y-6">
         {/* Quick Add Button */}
         {onOpenAddModal && (
