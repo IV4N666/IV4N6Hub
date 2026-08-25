@@ -3,6 +3,7 @@
 import React, { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Lock, KeyRound, Eye, EyeOff, ShieldCheck, ArrowRight, Sparkles } from "lucide-react";
+import { AnimatedCyberBackground } from "@/components/layout/AnimatedCyberBackground";
 
 function LoginForm() {
   const router = useRouter();
@@ -104,11 +105,9 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="relative min-h-screen w-full flex items-center justify-center bg-slate-950 px-4 overflow-hidden font-sans select-none">
-      {/* Dynamic Ambient Background Elements */}
-      <div className="absolute -top-40 -left-40 w-96 h-96 bg-blue-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
-      <div className="absolute -bottom-40 -right-40 w-96 h-96 bg-purple-600/20 rounded-full blur-3xl pointer-events-none animate-pulse" />
-      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-emerald-500/5 rounded-full blur-3xl pointer-events-none" />
+    <div className="relative min-h-screen w-full flex items-center justify-center bg-[#090d16] px-4 overflow-hidden font-sans select-none">
+      {/* Dynamic Animated Ambient Background */}
+      <AnimatedCyberBackground />
 
       {/* Main Glassmorphic Card */}
       <div className="relative z-10 w-full max-w-md">

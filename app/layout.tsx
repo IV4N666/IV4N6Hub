@@ -6,6 +6,7 @@ import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { AddTransactionModal } from "@/components/finance/AddTransactionModal";
+import { AnimatedCyberBackground } from "@/components/layout/AnimatedCyberBackground";
 
 export default function RootLayout({
   children,
@@ -59,8 +60,11 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="min-h-screen bg-slate-950 text-slate-100 antialiased selection:bg-blue-600 selection:text-white">
-        <div className="flex min-h-screen flex-col">
+      <body className="min-h-screen bg-[#090d16] text-slate-100 antialiased selection:bg-blue-600 selection:text-white relative">
+        {/* Dynamic Animated Ambient Background */}
+        <AnimatedCyberBackground />
+
+        <div className="flex min-h-screen flex-col relative z-10">
           <Header
             currentCurrency={currency}
             onCurrencyChange={handleCurrencyChange}

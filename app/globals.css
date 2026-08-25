@@ -3,29 +3,29 @@
 @tailwind utilities;
 
 :root {
-  --background: #0f172a;
+  --background: #090d16;
   --foreground: #f8fafc;
-  --card: #1e293b;
+  --card: #111827;
   --card-foreground: #f8fafc;
-  --popover: #1e293b;
+  --popover: #111827;
   --popover-foreground: #f8fafc;
   --primary: #3b82f6;
   --primary-foreground: #ffffff;
-  --secondary: #334155;
+  --secondary: #1e293b;
   --secondary-foreground: #f8fafc;
-  --muted: #334155;
+  --muted: #1e293b;
   --muted-foreground: #94a3b8;
   --accent: #2563eb;
   --accent-foreground: #ffffff;
-  --border: #334155;
-  --input: #334155;
+  --border: #1e293b;
+  --input: #1e293b;
   --ring: #3b82f6;
   --radius: 0.75rem;
 }
 
 body {
   color: var(--foreground);
-  background: var(--background);
+  background: #090d16;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   overflow-x: hidden;
   -webkit-tap-highlight-color: transparent;
@@ -37,56 +37,127 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(15, 23, 42, 0.6);
+  background: rgba(9, 13, 22, 0.6);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(100, 116, 139, 0.4);
+  background: rgba(100, 116, 139, 0.3);
   border-radius: 9999px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.7);
+  background: rgba(100, 116, 139, 0.6);
+}
+
+/* Cyber Grid Pattern */
+.bg-cyber-grid {
+  background-image: radial-gradient(rgba(148, 163, 184, 0.12) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Radial Vignette */
+.bg-radial-vignette {
+  background: radial-gradient(circle at 50% 50%, transparent 20%, #090d16 90%);
 }
 
 /* Glassmorphism helpers */
 .glass-panel {
-  background: rgba(30, 41, 59, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(15, 23, 42, 0.65);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 .glass-card {
-  background: rgba(30, 41, 59, 0.85);
-  backdrop-filter: blur(8px);
-  -webkit-backdrop-filter: blur(8px);
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
 .glass-card-hover {
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .glass-card-hover:hover {
   transform: translateY(-2px);
   border-color: rgba(59, 130, 246, 0.4);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 8px 10px -6px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.4), 0 8px 15px -6px rgba(59, 130, 246, 0.2);
 }
 
-/* Pulse recording glow */
-@keyframes pulse-ring {
+/* Orb Drift Animations (Smooth & Low-Power) */
+@keyframes orbDrift1 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(80px, 60px, 0) scale(1.15); }
+  66% { transform: translate3d(-40px, 100px, 0) scale(0.95); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes orbDrift2 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  33% { transform: translate3d(-90px, 70px, 0) scale(1.1); }
+  66% { transform: translate3d(50px, -50px, 0) scale(0.9); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes orbDrift3 {
+  0% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(60px, -80px, 0) scale(1.18); }
+  100% { transform: translate3d(0, 0, 0) scale(1); }
+}
+
+@keyframes orbDrift4 {
+  0% { transform: translate3d(0, 0, 0) scale(0.9); opacity: 0.6; }
+  50% { transform: translate3d(-50px, 40px, 0) scale(1.12); opacity: 0.9; }
+  100% { transform: translate3d(0, 0, 0) scale(0.9); opacity: 0.6; }
+}
+
+.animate-orb-drift-1 {
+  animation: orbDrift1 24s ease-in-out infinite;
+  will-change: transform;
+}
+.animate-orb-drift-2 {
+  animation: orbDrift2 28s ease-in-out infinite;
+  will-change: transform;
+}
+.animate-orb-drift-3 {
+  animation: orbDrift3 22s ease-in-out infinite;
+  will-change: transform;
+}
+.animate-orb-drift-4 {
+  animation: orbDrift4 26s ease-in-out infinite;
+  will-change: transform;
+}
+
+/* Stardust Floating Particles */
+@keyframes particleFloat {
   0% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    transform: translateY(100vh) scale(0);
+    opacity: 0;
   }
-  70% {
-    transform: scale(1);
-    box-shadow: 0 0 0 16px rgba(239, 68, 68, 0);
+  20% {
+    opacity: 0.7;
+    transform: translateY(80vh) scale(1);
+  }
+  80% {
+    opacity: 0.5;
+    transform: translateY(20vh) scale(0.8);
   }
   100% {
-    transform: scale(0.95);
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    transform: translateY(-10vh) scale(0);
+    opacity: 0;
   }
 }
 
-.recording-pulse {
-  animation: pulse-ring 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+.particle {
+  position: absolute;
+  border-radius: 9999px;
+  background: white;
+  pointer-events: none;
 }
+
+.particle-1 { width: 3px; height: 3px; left: 15%; animation: particleFloat 16s linear infinite; animation-delay: 0s; box-shadow: 0 0 8px #38bdf8; }
+.particle-2 { width: 2px; height: 2px; left: 35%; animation: particleFloat 20s linear infinite; animation-delay: 3s; box-shadow: 0 0 6px #818cf8; }
+.particle-3 { width: 4px; height: 4px; left: 55%; animation: particleFloat 18s linear infinite; animation-delay: 6s; box-shadow: 0 0 10px #c084fc; }
+.particle-4 { width: 2px; height: 2px; left: 75%; animation: particleFloat 22s linear infinite; animation-delay: 2s; box-shadow: 0 0 6px #34d399; }
+.particle-5 { width: 3px; height: 3px; left: 85%; animation: particleFloat 19s linear infinite; animation-delay: 8s; box-shadow: 0 0 8px #38bdf8; }
+.particle-6 { width: 2px; height: 2px; left: 25%; animation: particleFloat 25s linear infinite; animation-delay: 5s; box-shadow: 0 0 6px #a78bfa; }
+.particle-7 { width: 3px; height: 3px; left: 45%; animation: particleFloat 17s linear infinite; animation-delay: 11s; box-shadow: 0 0 8px #34d399; }
+.particle-8 { width: 2px; height: 2px; left: 65%; animation: particleFloat 23s linear infinite; animation-delay: 7s; box-shadow: 0 0 6px #60a5fa; }
