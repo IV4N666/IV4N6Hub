@@ -14,6 +14,7 @@ import {
   Sparkles,
   Zap,
   Monitor,
+  StickyNote,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -36,6 +37,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
       icon: Receipt,
     },
     {
+      name: "Notes & Tasks",
+      path: "/notes",
+      icon: StickyNote,
+      badge: "Voice Memo",
+      highlight: true,
+    },
+    {
       name: "WhatsApp AI Hub",
       path: "/whatsapp-hub",
       icon: MessageSquare,
@@ -47,7 +55,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
       path: "/system-monitor",
       icon: Monitor,
       badge: "Real-time",
-      highlight: true,
     },
     {
       name: "Modular Apps",

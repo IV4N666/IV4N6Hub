@@ -58,3 +58,31 @@ model AppConfig {
   theme               String   @default("dark")
   updatedAt           DateTime @updatedAt
 }
+
+model Note {
+  id        String   @id @default(cuid())
+  title     String
+  content   String
+  category  String   @default("General") // "Idea" | "Work" | "Personal" | "Voice"
+  isPinned  Boolean  @default(false)
+  color     String   @default("#3b82f6")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([createdAt])
+}
+
+model TodoTask {
+  id          String    @id @default(cuid())
+  title       String
+  description String?
+  status      String    @default("PENDING") // "PENDING" | "COMPLETED"
+  priority    String    @default("MEDIUM") // "HIGH" | "MEDIUM" | "LOW"
+  dueDate     DateTime?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  @@index([status])
+  @@index([priority])
+}
+
