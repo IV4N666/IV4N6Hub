@@ -1,0 +1,60 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model Transaction {
+  id          String   @id @default(cuid())
+  amount      Float
+  type        String   @default("EXPENSE") // "EXPENSE" | "INCOME"
+  category    String   @default("Other")
+  description String?
+  source      String   @default("WEB_MANUAL") // "WEB_MANUAL" | "WHATSAPP_TEXT" | "WHATSAPP_VOICE" | "API"
+  rawInput    String?
+  currency    String   @default("USD")
+  date        DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([date])
+  @@index([category])
+  @@index([type])
+}
+
+model CategoryBudget {
+  id           String   @id @default(cuid())
+  category     String   @unique
+  monthlyLimit Float    @default(500)
+  color        String   @default("#3b82f6")
+  icon         String   @default("DollarSign")
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model PlatformModule {
+  id          String   @id @default(cuid())
+  key         String   @unique
+  name        String
+  description String
+  category    String   @default("Core")
+  isEnabled   Boolean  @default(true)
+  icon        String
+  path        String
+  createdAt   DateTime @default(now())
+}
+
+model AppConfig {
+  id              String   @id @default("default")
+  defaultCurrency String   @default("USD")
+  geminiApiKey    String?
+  whatsappPhone   String?
+  webhookSecret       String?
+  adminPasswordHash   String?
+  allowedPhoneNumbers String?
+  theme               String   @default("dark")
+  updatedAt           DateTime @updatedAt
+}
