@@ -20,7 +20,7 @@ import {
 
 export default function SettingsPage() {
   const router = useRouter();
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("MYR");
   const [geminiApiKey, setGeminiApiKey] = useState("");
   const [maskedGeminiKey, setMaskedGeminiKey] = useState("");
   const [hasGeminiKey, setHasGeminiKey] = useState(false);

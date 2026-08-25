@@ -2,6 +2,7 @@
 
 import "./globals.css";
 import React, { useState, useEffect } from "react";
+import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/Header";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
@@ -13,7 +14,10 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const [currency, setCurrency] = useState("USD");
+  const pathname = usePathname();
+  const isLoginPage = pathname === "/login";
+
+  const [currency, setCurrency] = useState("MYR"); // Default to MYR (RM)
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
 
   useEffect(() => {
@@ -23,6 +27,8 @@ export default function RootLayout({
       .then((data) => {
         if (data.success && data.config?.defaultCurrency) {
           setCurrency(data.config.defaultCurrency);
+        } else {
+          setCurrency("MYR");
         }
       })
       .catch((err) => console.error(err));
@@ -56,35 +62,43 @@ export default function RootLayout({
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
         <link rel="manifest" href="/manifest.json" />
         <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-        <meta name="theme-color" content="#0f172a" />
+        <meta name="theme-color" content="#090d16" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
       </head>
-      <body className="min-h-screen bg-[#090d16] text-slate-100 antialiased selection:bg-blue-600 selection:text-white relative">
+      <body className="min-h-screen bg-[#090d16] text-slate-100 antialiased selection:bg-blue-600 selection:text-white relative overflow-x-hidden">
         {/* Dynamic Animated Ambient Background */}
         <AnimatedCyberBackground />
 
-        <div className="flex min-h-screen flex-col relative z-10">
-          <Header
-            currentCurrency={currency}
-            onCurrencyChange={handleCurrencyChange}
-            onRefresh={handleRefresh}
-          />
+        {isLoginPage ? (
+          /* Pure Fullscreen Centered Vault on Login Page */
+          <main className="relative z-10 min-h-screen w-full flex items-center justify-center">
+            {children}
+          </main>
+        ) : (
+          /* Full App Shell */
+          <div className="flex min-h-screen flex-col relative z-10">
+            <Header
+              currentCurrency={currency}
+              onCurrencyChange={handleCurrencyChange}
+              onRefresh={handleRefresh}
+            />
 
-          <div className="flex flex-1">
-            <Sidebar onOpenAddModal={() => setIsAddModalOpen(true)} />
-            <main className="flex-1 pb-20 md:pb-10 overflow-y-auto">{children}</main>
+            <div className="flex flex-1">
+              <Sidebar onOpenAddModal={() => setIsAddModalOpen(true)} />
+              <main className="flex-1 pb-20 md:pb-10 overflow-y-auto">{children}</main>
+            </div>
+
+            <MobileNav onOpenAddModal={() => setIsAddModalOpen(true)} />
+
+            <AddTransactionModal
+              isOpen={isAddModalOpen}
+              onClose={() => setIsAddModalOpen(false)}
+              onSuccess={() => window.location.reload()}
+              currency={currency}
+            />
           </div>
-
-          <MobileNav onOpenAddModal={() => setIsAddModalOpen(true)} />
-
-          <AddTransactionModal
-            isOpen={isAddModalOpen}
-            onClose={() => setIsAddModalOpen(false)}
-            onSuccess={() => window.location.reload()}
-            currency={currency}
-          />
-        </div>
+        )}
       </body>
     </html>
   );

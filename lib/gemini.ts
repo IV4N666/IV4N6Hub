@@ -41,7 +41,7 @@ const STANDARD_CATEGORIES = [
 export async function parseTextWithAI(
   text: string,
   userApiKey?: string,
-  defaultCurrency = "USD"
+  defaultCurrency = "MYR"
 ): Promise<AIParsedExpense> {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
 

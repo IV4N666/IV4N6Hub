@@ -89,11 +89,12 @@ export const Header: React.FC<HeaderProps> = ({
             onChange={(e) => onCurrencyChange(e.target.value)}
             className="bg-transparent px-2 py-0.5 text-xs font-semibold text-white outline-none cursor-pointer"
           >
-            <option value="USD" className="bg-slate-900 text-white">USD ($)</option>
             <option value="MYR" className="bg-slate-900 text-white">MYR (RM)</option>
+            <option value="USD" className="bg-slate-900 text-white">USD ($)</option>
             <option value="SGD" className="bg-slate-900 text-white">SGD (S$)</option>
             <option value="EUR" className="bg-slate-900 text-white">EUR (€)</option>
             <option value="GBP" className="bg-slate-900 text-white">GBP (£)</option>
+            <option value="CNY" className="bg-slate-900 text-white">CNY (¥)</option>
           </select>
         </div>
 

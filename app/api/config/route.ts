@@ -19,7 +19,7 @@ export async function GET() {
       return NextResponse.json({
         success: true,
         config: {
-          defaultCurrency: "USD",
+          defaultCurrency: "MYR",
           theme: "dark",
           hasGeminiKey: false,
           maskedGeminiKey: "",
@@ -90,7 +90,7 @@ export async function POST(request: NextRequest) {
       update: updateData,
       create: {
         id: "default",
-        defaultCurrency: defaultCurrency || "USD",
+        defaultCurrency: defaultCurrency || "MYR",
         geminiApiKey: geminiApiKey && !geminiApiKey.includes("...") ? geminiApiKey.trim() : null,
         whatsappPhone: whatsappPhone || null,
         webhookSecret: webhookSecret || "omnihub_secret_token",
