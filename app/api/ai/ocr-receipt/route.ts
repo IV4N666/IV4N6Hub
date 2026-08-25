@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { parseReceiptImageWithAI } from "@/lib/gemini";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get("content-type") || "";

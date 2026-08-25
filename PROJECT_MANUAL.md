@@ -244,7 +244,7 @@ c:\Users\Ivan\Downloads\Test/
 2. **推送到 GitHub**：
    * 在 GitHub 创建私有仓库 `IV4N6Hub`，在本地运行：
      ```bash
-     git remote add origin https://github.com/你的用户名/IV4N6Hub.git
+     git remote add origin https://github.com/IV4N666/IV4N6Hub.git
      git push -u origin main
      ```
 3. **在 Vercel 导入部署**：

@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
 
+export const dynamic = "force-dynamic";
+
 // Mask sensitive API Key (e.g. AIzaSy...9xK1)
 function maskApiKey(key?: string | null): string {
   if (!key) return "";

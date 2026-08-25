@@ -3,6 +3,8 @@ import { db } from "@/lib/db";
 import { parseTextWithAI, parseAudioWithAI } from "@/lib/gemini";
 import { AIParsedExpense } from "@/lib/types";
 
+export const dynamic = "force-dynamic";
+
 export async function POST(request: NextRequest) {
   try {
     const contentType = request.headers.get("content-type") || "";
