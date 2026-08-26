@@ -22,7 +22,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ onOpenAddModal }) => {
     { name: "Finance", path: "/finance", icon: LayoutDashboard },
     { name: "Accounts", path: "/accounts", icon: Vault },
     { name: "Ledger", path: "/transactions", icon: Receipt },
-    { name: "WhatsApp", path: "/whatsapp-hub", icon: MessageSquare, highlight: true },
+    { name: "WhatsApp", path: "/whatsapp-hub", icon: MessageSquare },
   ];
 
   return (
@@ -65,12 +65,7 @@ export const MobileNav: React.FC<MobileNavProps> = ({ onOpenAddModal }) => {
               isActive ? "text-blue-400 font-semibold" : "text-slate-400 hover:text-slate-200"
             }`}
           >
-            <div className="relative">
-              <Icon className={`h-5 w-5 ${isActive ? "text-blue-400" : "text-slate-400"}`} />
-              {item.highlight && (
-                <span className="absolute -top-1 -right-1 h-2 w-2 rounded-full bg-emerald-400 animate-pulse" />
-              )}
-            </div>
+            <Icon className={`h-5 w-5 ${isActive ? "text-blue-400" : "text-slate-400"}`} />
             <span>{item.name}</span>
           </Link>
         );

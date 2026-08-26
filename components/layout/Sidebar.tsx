@@ -30,14 +30,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
       name: "Dashboard",
       path: "/finance",
       icon: LayoutDashboard,
-      badge: "Live",
     },
     {
       name: "Accounts & Assets",
       path: "/accounts",
       icon: Vault,
-      badge: "Net Worth",
-      highlight: true,
     },
     {
       name: "Transactions",
@@ -48,27 +45,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
       name: "Notes & Tasks",
       path: "/notes",
       icon: StickyNote,
-      badge: "Voice Memo",
-      highlight: true,
     },
     {
       name: "WhatsApp AI Hub",
       path: "/whatsapp-hub",
       icon: MessageSquare,
-      badge: "Voice & Text",
-      highlight: true,
     },
     {
       name: "PC & System Monitor",
       path: "/system-monitor",
       icon: Monitor,
-      badge: "Real-time",
     },
     {
       name: "Modular Apps",
       path: "/modules",
       icon: Grid,
-      badge: "Extensible",
     },
     {
       name: "Settings",
@@ -104,33 +95,20 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
                 <Link
                   key={item.path}
                   href={item.path}
-                  className={`group flex items-center justify-between rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
+                  className={`group flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all ${
                     isActive
-                      ? "bg-blue-600/15 text-blue-400 border border-blue-500/30 shadow-sm"
+                      ? "bg-blue-600/15 text-blue-400 border border-blue-500/30 shadow-sm font-semibold"
                       : "text-slate-300 hover:bg-slate-800/60 hover:text-white"
                   }`}
                 >
-                  <div className="flex items-center gap-3">
-                    <Icon
-                      className={`h-4 w-4 transition-colors ${
-                        isActive
-                          ? "text-blue-400"
-                          : "text-slate-400 group-hover:text-white"
-                      }`}
-                    />
-                    <span>{item.name}</span>
-                  </div>
-                  {item.badge && (
-                    <span
-                      className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${
-                        item.highlight
-                          ? "bg-emerald-500/20 text-emerald-300 border border-emerald-500/30"
-                          : "bg-slate-800 text-slate-400 border border-slate-700"
-                      }`}
-                    >
-                      {item.badge}
-                    </span>
-                  )}
+                  <Icon
+                    className={`h-4 w-4 transition-colors ${
+                      isActive
+                        ? "text-blue-400"
+                        : "text-slate-400 group-hover:text-white"
+                    }`}
+                  />
+                  <span>{item.name}</span>
                 </Link>
               );
             })}
