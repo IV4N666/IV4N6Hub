@@ -13,7 +13,7 @@ export interface OCRReceiptResult {
 }
 
 export interface SmartIntentResult {
-  type: "EXPENSE" | "INCOME" | "TODO" | "NOTE";
+  type: "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE";
   title: string;
   details: string;
   amount?: number;

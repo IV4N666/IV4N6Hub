@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   Search,
   Filter,
   Download,
+  Upload,
   Trash2,
   Edit2,
   Mic,
@@ -12,19 +13,28 @@ import {
   Globe,
   ArrowUpRight,
   ArrowDownLeft,
+  ArrowRightLeft,
   X,
   Check,
+  Camera,
+  Repeat,
+  Vault,
+  FileSpreadsheet,
+  FileCode,
+  Sparkles,
 } from "lucide-react";
-import { Transaction } from "@/lib/types";
+import { Transaction, Account } from "@/lib/types";
 import { formatCurrency, getCategoryMeta, CATEGORY_DEFINITIONS } from "@/lib/category-meta";
 import { format } from "date-fns";
 
 export default function TransactionsLedger() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [currency, setCurrency] = useState("USD");
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [currency, setCurrency] = useState("MYR");
   const [searchQuery, setSearchQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [typeFilter, setTypeFilter] = useState("ALL");
+  const [accountFilter, setAccountFilter] = useState("ALL");
   const [sourceFilter, setSourceFilter] = useState("ALL");
   const [loading, setLoading] = useState(true);
 
@@ -32,7 +42,14 @@ export default function TransactionsLedger() {
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState("");
   const [editCategory, setEditCategory] = useState("");
+  const [editSubCategory, setEditSubCategory] = useState("");
+  const [editTags, setEditTags] = useState("");
   const [editDesc, setEditDesc] = useState("");
+
+  // Import / Export Modal
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const fetchTransactions = async () => {
     try {
@@ -40,13 +57,23 @@ export default function TransactionsLedger() {
       const params = new URLSearchParams();
       if (categoryFilter !== "ALL") params.append("category", categoryFilter);
       if (typeFilter !== "ALL") params.append("type", typeFilter);
+      if (accountFilter !== "ALL") params.append("accountId", accountFilter);
       if (sourceFilter !== "ALL") params.append("source", sourceFilter);
       if (searchQuery.trim()) params.append("q", searchQuery.trim());
 
-      const res = await fetch(`/api/finance/transactions?${params.toString()}`);
-      const data = await res.json();
-      if (data.success) {
-        setTransactions(data.transactions || []);
+      const [txRes, accRes] = await Promise.all([
+        fetch(`/api/finance/transactions?${params.toString()}&limit=200`),
+        fetch("/api/finance/accounts"),
+      ]);
+
+      const txData = await txRes.json();
+      const accData = await accRes.json();
+
+      if (txData.success) {
+        setTransactions(txData.transactions || []);
+      }
+      if (accData.success) {
+        setAccounts(accData.accounts || []);
       }
     } catch (err) {
       console.error("Failed to load transactions:", err);
@@ -57,7 +84,7 @@ export default function TransactionsLedger() {
 
   useEffect(() => {
     fetchTransactions();
-  }, [categoryFilter, typeFilter, sourceFilter]);
+  }, [categoryFilter, typeFilter, accountFilter, sourceFilter]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,7 +92,7 @@ export default function TransactionsLedger() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Are you sure you want to delete this transaction?")) return;
+    if (!confirm("Are you sure you want to delete this transaction? Account balance will be restored.")) return;
     try {
       const res = await fetch(`/api/finance/transactions?id=${id}`, {
         method: "DELETE",
@@ -82,6 +109,8 @@ export default function TransactionsLedger() {
     setEditingTx(tx);
     setEditAmount(String(tx.amount));
     setEditCategory(tx.category);
+    setEditSubCategory(tx.subCategory || "");
+    setEditTags(tx.tags || "");
     setEditDesc(tx.description || "");
   };
 
@@ -95,6 +124,8 @@ export default function TransactionsLedger() {
           id: editingTx.id,
           amount: Number(editAmount),
           category: editCategory,
+          subCategory: editSubCategory || null,
+          tags: editTags || null,
           description: editDesc,
         }),
       });
@@ -107,29 +138,59 @@ export default function TransactionsLedger() {
     }
   };
 
-  const handleExportCSV = () => {
-    if (transactions.length === 0) return;
-    const headers = ["Date", "Type", "Category", "Amount", "Currency", "Description", "Source", "RawInput"];
-    const rows = transactions.map((t) => [
-      format(new Date(t.date), "yyyy-MM-dd"),
-      t.type,
-      `"${t.category}"`,
-      t.amount,
-      t.currency,
-      `"${t.description || ""}"`,
-      t.source,
-      `"${t.rawInput || ""}"`,
-    ]);
+  const handleExportFullJSON = async () => {
+    try {
+      const res = await fetch("/api/finance/backup?format=json");
+      const data = await res.json();
+      const blob = new Blob([JSON.stringify(data.backup, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `IV4N6Hub_Backup_${new Date().toISOString().split("T")[0]}.json`;
+      link.click();
+    } catch (err) {
+      alert("Failed to export JSON backup");
+    }
+  };
 
-    const csvContent = [headers.join(","), ...rows.map((r) => r.join(","))].join("\n");
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.setAttribute("href", url);
-    link.setAttribute("download", `IV4N6Hub_Transactions_${new Date().toISOString().split("T")[0]}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+  const handleExportCSV = () => {
+    window.open("/api/finance/backup?format=csv", "_blank");
+  };
+
+  const handleImportJSON = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setImportStatus("Restoring backup package...");
+      const text = await file.text();
+      const jsonData = JSON.parse(text);
+
+      const res = await fetch("/api/finance/backup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "RESTORE_JSON",
+          data: { data: jsonData.data || jsonData },
+        }),
+      });
+
+      const result = await res.json();
+      if (result.success) {
+        setImportStatus(result.message || "Restored successfully!");
+        fetchTransactions();
+        setTimeout(() => {
+          setIsBackupModalOpen(false);
+          setImportStatus(null);
+        }, 2500);
+      } else {
+        setImportStatus(`Error: ${result.error}`);
+      }
+    } catch (err: any) {
+      setImportStatus(`Failed to parse file: ${err.message}`);
+    }
   };
 
   const getSourceBadge = (source: string) => {
@@ -148,6 +209,20 @@ export default function TransactionsLedger() {
             <span>WA Text</span>
           </span>
         );
+      case "RECEIPT_OCR":
+        return (
+          <span className="flex items-center gap-1 rounded-md bg-amber-500/15 px-2 py-0.5 text-[10px] font-semibold text-amber-300 border border-amber-500/30">
+            <Camera className="h-3 w-3 text-amber-400" />
+            <span>OCR</span>
+          </span>
+        );
+      case "RECURRING":
+        return (
+          <span className="flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold text-indigo-300 border border-indigo-500/30">
+            <Repeat className="h-3 w-3 text-indigo-400" />
+            <span>Auto-Bill</span>
+          </span>
+        );
       default:
         return (
           <span className="flex items-center gap-1 rounded-md bg-blue-500/15 px-2 py-0.5 text-[10px] font-semibold text-blue-300 border border-blue-500/30">
@@ -158,249 +233,342 @@ export default function TransactionsLedger() {
     }
   };
 
-  const categories = Object.keys(CATEGORY_DEFINITIONS);
-
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
-      {/* Header & Export */}
+      {/* Top Header */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
         <div>
           <h2 className="text-2xl font-bold tracking-tight text-white">
-            Transactions Ledger
+            Transactions Ledger (交易流水大屏)
           </h2>
           <p className="text-xs text-slate-400 mt-1">
-            Complete searchable history of all spending and earnings
+            Complete transaction records, multi-account filters, transfers & batch backup/restore
           </p>
         </div>
 
-        <button
-          onClick={handleExportCSV}
-          className="flex items-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3.5 py-2 text-xs font-semibold text-white transition-colors"
-        >
-          <Download className="h-4 w-4 text-emerald-400" />
-          <span>Export CSV</span>
-        </button>
+        <div className="flex items-center gap-2.5">
+          <button
+            onClick={() => setIsBackupModalOpen(true)}
+            className="flex items-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3.5 py-2 text-xs font-semibold text-white transition-all active:scale-95"
+          >
+            <Download className="h-4 w-4 text-cyan-400" />
+            <span>Backup & Import</span>
+          </button>
+        </div>
       </div>
 
-      {/* Filter and Search Bar */}
-      <div className="glass-card rounded-2xl p-4 border border-slate-800">
-        <form onSubmit={handleSearchSubmit} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-          {/* Search text */}
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Search description, merchant..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-700 pl-9 pr-4 py-2 text-xs text-white placeholder-slate-400 outline-none focus:border-blue-500"
-            />
-          </div>
-
-          {/* Category Filter */}
-          <div>
-            <select
-              value={categoryFilter}
-              onChange={(e) => setCategoryFilter(e.target.value)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="ALL">All Categories</option>
-              {categories.map((c) => (
-                <option key={c} value={c}>
-                  {c}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Type Filter */}
-          <div>
-            <select
-              value={typeFilter}
-              onChange={(e) => setTypeFilter(e.target.value)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="ALL">All Types (Expense & Income)</option>
-              <option value="EXPENSE">Expense Only</option>
-              <option value="INCOME">Income Only</option>
-            </select>
-          </div>
-
-          {/* Source Filter */}
-          <div>
-            <select
-              value={sourceFilter}
-              onChange={(e) => setSourceFilter(e.target.value)}
-              className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
-            >
-              <option value="ALL">All Channels / Sources</option>
-              <option value="WHATSAPP_VOICE">WhatsApp Voice AI</option>
-              <option value="WHATSAPP_TEXT">WhatsApp Text AI</option>
-              <option value="WEB_MANUAL">Web Manual</option>
-            </select>
-          </div>
+      {/* Filter & Search Bar */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-3">
+        {/* Search */}
+        <form onSubmit={handleSearchSubmit} className="relative sm:col-span-2 lg:col-span-1">
+          <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+          <input
+            type="text"
+            placeholder="Search keyword / #tag..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="w-full rounded-xl border border-slate-800 bg-slate-900/80 pl-10 pr-4 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+          />
         </form>
+
+        {/* Account Filter */}
+        <div>
+          <select
+            value={accountFilter}
+            onChange={(e) => setAccountFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">All Accounts (全部账户)</option>
+            {accounts.map((acc) => (
+              <option key={acc.id} value={acc.id}>
+                💳 {acc.name}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Type Filter */}
+        <div>
+          <select
+            value={typeFilter}
+            onChange={(e) => setTypeFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">All Types (收/支/转)</option>
+            <option value="EXPENSE">Expense (仅支出)</option>
+            <option value="INCOME">Income (仅收入)</option>
+            <option value="TRANSFER">Transfer (仅内部转账)</option>
+          </select>
+        </div>
+
+        {/* Category Filter */}
+        <div>
+          <select
+            value={categoryFilter}
+            onChange={(e) => setCategoryFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">All Categories</option>
+            {Object.keys(CATEGORY_DEFINITIONS).map((cat) => (
+              <option key={cat} value={cat}>
+                {cat}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {/* Source Filter */}
+        <div>
+          <select
+            value={sourceFilter}
+            onChange={(e) => setSourceFilter(e.target.value)}
+            className="w-full rounded-xl border border-slate-800 bg-slate-900/80 px-3 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
+          >
+            <option value="ALL">All Sources</option>
+            <option value="WHATSAPP_VOICE">WhatsApp Voice</option>
+            <option value="WHATSAPP_TEXT">WhatsApp Text</option>
+            <option value="RECEIPT_OCR">AI Receipt OCR</option>
+            <option value="RECURRING">Auto Subscription</option>
+            <option value="WEB_MANUAL">Web Manual</option>
+          </select>
+        </div>
       </div>
 
-      {/* Ledger Table */}
-      <div className="glass-card rounded-2xl border border-slate-800 overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs">
-            <thead className="border-b border-slate-800 bg-slate-900/80 uppercase tracking-wider text-slate-400 font-semibold text-[11px]">
-              <tr>
-                <th className="py-3 px-4">Date</th>
-                <th className="py-3 px-4">Description / Merchant</th>
-                <th className="py-3 px-4">Category</th>
-                <th className="py-3 px-4">Source / Origin</th>
-                <th className="py-3 px-4 text-right">Amount</th>
-                <th className="py-3 px-4 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-800/60">
-              {transactions.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="py-12 text-center text-slate-400 text-xs">
-                    No transactions match your search filter.
-                  </td>
-                </tr>
-              ) : (
-                transactions.map((tx) => {
-                  const meta = getCategoryMeta(tx.category);
-                  const isIncome = tx.type === "INCOME";
+      {/* Transactions Table / List */}
+      <div className="rounded-2xl border border-slate-800/80 bg-slate-900/40 backdrop-blur-xl overflow-hidden shadow-xl">
+        {loading ? (
+          <div className="flex h-64 items-center justify-center">
+            <div className="h-8 w-8 animate-spin rounded-full border-4 border-blue-500 border-t-transparent" />
+          </div>
+        ) : transactions.length === 0 ? (
+          <div className="p-12 text-center text-xs text-slate-400">
+            No matching transactions found with current filters.
+          </div>
+        ) : (
+          <div className="divide-y divide-slate-800/60 overflow-x-auto">
+            {transactions.map((tx) => {
+              const isIncome = tx.type === "INCOME";
+              const isTransfer = tx.type === "TRANSFER";
+              const meta = getCategoryMeta(tx.category);
+              const isEditing = editingTx?.id === tx.id;
 
-                  return (
-                    <tr key={tx.id} className="hover:bg-slate-800/30 transition-colors">
-                      <td className="py-3 px-4 font-mono text-slate-400 whitespace-nowrap">
-                        {format(new Date(tx.date), "yyyy-MM-dd")}
-                      </td>
-                      <td className="py-3 px-4">
-                        <div className="font-semibold text-white max-w-[240px] truncate">
-                          {tx.description || tx.category}
-                        </div>
-                        {tx.rawInput && (
-                          <div className="text-[10px] text-slate-500 font-mono mt-0.5 truncate max-w-[200px]">
-                            &quot;{tx.rawInput}&quot;
-                          </div>
-                        )}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <span className="inline-flex items-center gap-1.5 rounded-md bg-slate-800 px-2 py-1 font-medium text-slate-200">
-                          <span
-                            className="h-2 w-2 rounded-full"
-                            style={{ backgroundColor: meta.color }}
+              return (
+                <div
+                  key={tx.id}
+                  className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 hover:bg-slate-800/30 transition-colors gap-3"
+                >
+                  <div className="flex items-center gap-3.5">
+                    <div
+                      className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
+                        isTransfer
+                          ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                          : isIncome
+                          ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+                          : "bg-rose-500/10 text-rose-400 border-rose-500/20"
+                      }`}
+                    >
+                      {isTransfer ? (
+                        <ArrowRightLeft className="h-4 w-4" />
+                      ) : isIncome ? (
+                        <ArrowDownLeft className="h-5 w-5" />
+                      ) : (
+                        <ArrowUpRight className="h-5 w-5" />
+                      )}
+                    </div>
+
+                    <div>
+                      {isEditing ? (
+                        <div className="space-y-2">
+                          <input
+                            type="text"
+                            value={editDesc}
+                            onChange={(e) => setEditDesc(e.target.value)}
+                            placeholder="Description"
+                            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
                           />
-                          {tx.category}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        {getSourceBadge(tx.source)}
-                      </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <span
-                          className={`font-bold text-sm ${
-                            isIncome ? "text-emerald-400" : "text-slate-100"
-                          }`}
-                        >
-                          {isIncome ? "+" : "-"}
-                          {formatCurrency(tx.amount, tx.currency || currency)}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right whitespace-nowrap">
-                        <div className="flex items-center justify-end gap-1">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="number"
+                              step="0.01"
+                              value={editAmount}
+                              onChange={(e) => setEditAmount(e.target.value)}
+                              className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
+                            />
+                            <input
+                              type="text"
+                              value={editTags}
+                              onChange={(e) => setEditTags(e.target.value)}
+                              placeholder="#Tags"
+                              className="w-28 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
+                            />
+                          </div>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-white">
+                              {tx.description || tx.category}
+                            </span>
+                            {getSourceBadge(tx.source)}
+                            {tx.subCategory && (
+                              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                                {tx.subCategory}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-wrap items-center gap-2 mt-1 text-xs text-slate-400">
+                            {isTransfer ? (
+                              <span className="text-indigo-300 font-medium text-[11px]">
+                                {tx.account?.name || "Account"} ➔ {tx.toAccount?.name || "Target"}
+                              </span>
+                            ) : (
+                              <>
+                                <span
+                                  className="h-2 w-2 rounded-full"
+                                  style={{ backgroundColor: meta.color }}
+                                />
+                                <span>{tx.category}</span>
+                                {tx.account && (
+                                  <span className="text-slate-300">
+                                    💳 {tx.account.name}
+                                  </span>
+                                )}
+                              </>
+                            )}
+                            <span>•</span>
+                            <span>{format(new Date(tx.date), "MMM d, yyyy")}</span>
+                            {tx.tags && (
+                              <span className="text-[10px] text-cyan-400">
+                                {tx.tags}
+                              </span>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                    <span
+                      className={`text-base font-black ${
+                        isTransfer
+                          ? "text-indigo-300"
+                          : isIncome
+                          ? "text-emerald-400"
+                          : "text-white"
+                      }`}
+                    >
+                      {isTransfer ? "↔ " : isIncome ? "+" : "-"}
+                      {formatCurrency(tx.amount, tx.currency || currency)}
+                    </span>
+
+                    <div className="flex items-center gap-1">
+                      {isEditing ? (
+                        <>
+                          <button
+                            onClick={handleSaveEdit}
+                            className="rounded-lg p-1.5 text-emerald-400 hover:bg-emerald-500/20"
+                          >
+                            <Check className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={() => setEditingTx(null)}
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </>
+                      ) : (
+                        <>
                           <button
                             onClick={() => handleStartEdit(tx)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-blue-400 transition-colors"
+                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-white"
                             title="Edit"
                           >
                             <Edit2 className="h-3.5 w-3.5" />
                           </button>
                           <button
                             onClick={() => handleDelete(tx.id)}
-                            className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-800 hover:text-red-400 transition-colors"
+                            className="rounded-lg p-1.5 text-slate-500 hover:bg-rose-500/20 hover:text-rose-400"
                             title="Delete"
                           >
                             <Trash2 className="h-3.5 w-3.5" />
                           </button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {/* Edit Modal */}
-      {editingTx && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
-          <div className="w-full max-w-sm rounded-2xl border border-slate-700 bg-slate-900 p-5 shadow-2xl space-y-4">
+      {/* Backup & Import Modal */}
+      {isBackupModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-fadeIn">
+          <div className="relative w-full max-w-md rounded-2xl border border-slate-700 bg-slate-900 p-6 shadow-2xl space-y-4">
             <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="font-bold text-white text-sm">Edit Transaction</h3>
+              <h3 className="text-base font-bold text-white">
+                Data Backup & Migration Center (数据备份与迁移)
+              </h3>
               <button
-                onClick={() => setEditingTx(null)}
+                onClick={() => setIsBackupModalOpen(false)}
                 className="text-slate-400 hover:text-white"
               >
-                <X className="h-4 w-4" />
+                ✕
               </button>
             </div>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Amount
-              </label>
-              <input
-                type="number"
-                step="0.01"
-                value={editAmount}
-                onChange={(e) => setEditAmount(e.target.value)}
-                className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-              />
-            </div>
+            {importStatus && (
+              <div className="rounded-xl bg-blue-500/10 border border-blue-500/30 p-3 text-xs text-blue-300">
+                {importStatus}
+              </div>
+            )}
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Category
-              </label>
-              <select
-                value={editCategory}
-                onChange={(e) => setEditCategory(e.target.value)}
-                className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-              >
-                {categories.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <div className="space-y-3">
+              <p className="text-xs text-slate-400">
+                Export all financial data (accounts, ledger, subscriptions, budgets) or restore from an earlier backup snapshot.
+              </p>
 
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                Description
-              </label>
-              <input
-                type="text"
-                value={editDesc}
-                onChange={(e) => setEditDesc(e.target.value)}
-                className="w-full rounded-xl bg-slate-800 border border-slate-700 px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-              />
-            </div>
+              {/* Export Buttons */}
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handleExportFullJSON}
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 p-3 hover:bg-slate-700 transition-all text-xs font-bold text-white"
+                >
+                  <FileCode className="h-5 w-5 text-cyan-400" />
+                  <span>Full JSON Backup</span>
+                </button>
 
-            <div className="flex gap-2 pt-2">
-              <button
-                onClick={() => setEditingTx(null)}
-                className="w-1/2 rounded-xl bg-slate-800 py-2 text-xs font-semibold text-slate-300 hover:bg-slate-700"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={handleSaveEdit}
-                className="w-1/2 rounded-xl bg-blue-600 py-2 text-xs font-semibold text-white hover:bg-blue-500"
-              >
-                Save Changes
-              </button>
+                <button
+                  onClick={handleExportCSV}
+                  className="flex flex-col items-center justify-center gap-1.5 rounded-xl border border-slate-700 bg-slate-800/80 p-3 hover:bg-slate-700 transition-all text-xs font-bold text-white"
+                >
+                  <FileSpreadsheet className="h-5 w-5 text-emerald-400" />
+                  <span>Export CSV</span>
+                </button>
+              </div>
+
+              {/* Import Upload */}
+              <div className="pt-2 border-t border-slate-800">
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".json"
+                  className="hidden"
+                  onChange={handleImportJSON}
+                />
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-cyan-500/40 bg-cyan-950/20 hover:bg-cyan-950/40 py-3 text-xs font-bold text-cyan-300 transition-all"
+                >
+                  <Upload className="h-4 w-4" />
+                  <span>Restore from JSON Backup File</span>
+                </button>
+              </div>
             </div>
           </div>
         </div>

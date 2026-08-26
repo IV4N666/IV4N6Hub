@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import {
   X,
   Plus,
@@ -14,14 +14,19 @@ import {
   CheckCircle2,
   Receipt,
   Loader2,
+  ArrowRightLeft,
+  Wallet,
+  Hash,
 } from "lucide-react";
-import { CATEGORY_DEFINITIONS } from "@/lib/category-meta";
+import { CATEGORY_DEFINITIONS, getCategoryMeta, formatCurrency } from "@/lib/category-meta";
+import { Account, TransactionType } from "@/lib/types";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
   currency: string;
+  initialType?: TransactionType;
 }
 
 export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
@@ -29,13 +34,19 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   onClose,
   onSuccess,
   currency,
+  initialType = "EXPENSE",
 }) => {
   const [entryMode, setEntryMode] = useState<"MANUAL" | "OCR">("MANUAL");
   const [amount, setAmount] = useState("");
-  const [type, setType] = useState<"EXPENSE" | "INCOME">("EXPENSE");
+  const [type, setType] = useState<TransactionType>(initialType);
   const [category, setCategory] = useState("Food & Dining");
+  const [subCategory, setSubCategory] = useState("Lunch");
+  const [tags, setTags] = useState("");
   const [description, setDescription] = useState("");
   const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [accountId, setAccountId] = useState<string>("");
+  const [toAccountId, setToAccountId] = useState<string>("");
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -44,6 +55,37 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [scannedItems, setScannedItems] = useState<Array<{ name: string; price: number }>>([]);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // Fetch accounts
+  useEffect(() => {
+    if (isOpen) {
+      setType(initialType);
+      fetch("/api/finance/accounts")
+        .then((res) => res.json())
+        .then((data) => {
+          if (data.success && data.accounts) {
+            setAccounts(data.accounts);
+            if (data.accounts.length > 0) {
+              if (!accountId) setAccountId(data.accounts[0].id);
+              if (data.accounts.length > 1 && !toAccountId) {
+                setToAccountId(data.accounts[1].id);
+              }
+            }
+          }
+        })
+        .catch(console.error);
+    }
+  }, [isOpen, initialType]);
+
+  // Update default subcategory when category changes
+  useEffect(() => {
+    const meta = getCategoryMeta(category);
+    if (meta.subCategories && meta.subCategories.length > 0) {
+      setSubCategory(meta.subCategories[0]);
+    } else {
+      setSubCategory("General");
+    }
+  }, [category]);
 
   if (!isOpen) return null;
 
@@ -97,6 +139,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       return;
     }
 
+    if (type === "TRANSFER" && accountId === toAccountId) {
+      setError("Source and destination accounts must be different for transfer");
+      return;
+    }
+
     setIsSubmitting(true);
     setError(null);
 
@@ -107,10 +154,25 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
         body: JSON.stringify({
           amount: Number(amount),
           type,
-          category: type === "INCOME" ? "Salary & Income" : category,
-          description: description.trim() || (type === "INCOME" ? "Income" : category),
+          category:
+            type === "TRANSFER"
+              ? "Transfer"
+              : type === "INCOME"
+              ? "Salary & Income"
+              : category,
+          subCategory: type === "TRANSFER" ? null : subCategory,
+          tags: tags.trim() || null,
+          description:
+            description.trim() ||
+            (type === "TRANSFER"
+              ? "Internal Account Transfer"
+              : type === "INCOME"
+              ? "Income"
+              : category),
           source: previewImage ? "RECEIPT_OCR" : "WEB_MANUAL",
           currency,
+          accountId: accountId || null,
+          toAccountId: type === "TRANSFER" ? toAccountId || null : null,
           date,
         }),
       });
@@ -123,6 +185,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       // Reset
       setAmount("");
       setDescription("");
+      setTags("");
       setPreviewImage(null);
       setScannedItems([]);
       onSuccess();
@@ -137,10 +200,11 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const categories = Object.keys(CATEGORY_DEFINITIONS).filter(
     (c) => c !== "Salary & Income"
   );
+  const currentCategoryMeta = getCategoryMeta(category);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fadeIn">
-      <div className="w-full max-w-lg rounded-3xl border border-slate-700/80 bg-slate-900/95 p-6 shadow-2xl backdrop-blur-2xl">
+      <div className="w-full max-w-lg rounded-3xl border border-slate-700/80 bg-slate-900/95 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div className="flex items-center gap-2.5">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-600/20 text-blue-400 border border-blue-500/30">
@@ -148,7 +212,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-white">Record Transaction</h2>
-              <p className="text-[11px] text-slate-400">Manual Entry or AI Receipt Vision OCR</p>
+              <p className="text-[11px] text-slate-400">Multi-Account Ledger & AI OCR Vision</p>
             </div>
           </div>
 
@@ -160,7 +224,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           </button>
         </div>
 
-        {/* Mode Switcher Tabs */}
+        {/* Mode Switcher Tabs (Manual vs OCR) */}
         <div className="grid grid-cols-2 gap-2 rounded-2xl bg-slate-950/80 p-1 mt-4 border border-slate-800">
           <button
             type="button"
@@ -199,93 +263,93 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
           <div className="mt-5 space-y-4 text-center">
             <div
               onClick={() => fileInputRef.current?.click()}
-              className="relative flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-purple-500/40 bg-purple-950/20 hover:bg-purple-950/30 p-8 cursor-pointer transition-all hover:border-purple-500 group"
+              className="group cursor-pointer rounded-2xl border-2 border-dashed border-purple-500/40 bg-purple-950/20 p-8 transition-all hover:border-purple-400 hover:bg-purple-950/30"
             >
               <input
                 ref={fileInputRef}
                 type="file"
                 accept="image/*"
-                capture="environment"
                 className="hidden"
                 onChange={handleImageUpload}
               />
-
-              {ocrLoading ? (
-                <div className="flex flex-col items-center gap-3 py-4">
-                  <Loader2 className="h-10 w-10 text-purple-400 animate-spin" />
-                  <p className="text-xs font-semibold text-purple-200">
-                    Gemini Vision AI is analyzing items, tax & total...
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-600/30 text-purple-300 border border-purple-500/40 group-hover:scale-105 transition-transform">
+                  {ocrLoading ? (
+                    <Loader2 className="h-7 w-7 animate-spin" />
+                  ) : (
+                    <UploadCloud className="h-7 w-7" />
+                  )}
+                </div>
+                <div>
+                  <p className="text-sm font-bold text-white">
+                    {ocrLoading ? "Analyzing receipt with Gemini Vision..." : "Click or Snap Receipt Photo"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    Supports JPG, PNG receipts, bills & dining invoices
                   </p>
                 </div>
-              ) : previewImage ? (
-                <div className="flex flex-col items-center gap-3">
-                  <img
-                    src={previewImage}
-                    alt="Receipt"
-                    className="max-h-48 rounded-xl object-contain shadow-md border border-slate-700"
-                  />
-                  <span className="text-xs text-purple-300 font-semibold underline">
-                    Click to change photo
-                  </span>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center gap-2.5">
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-purple-600/20 text-purple-400 border border-purple-500/30 group-hover:scale-110 transition-transform">
-                    <UploadCloud className="h-6 w-6" />
-                  </div>
-                  <div>
-                    <p className="text-xs font-bold text-white">
-                      Take Photo or Upload Receipt Image
-                    </p>
-                    <p className="text-[11px] text-slate-400 mt-0.5">
-                      Supports JPG, PNG, WEBP receipts & invoices
-                    </p>
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
 
-            <p className="text-[11px] text-slate-400 leading-relaxed">
-              💡 Takes 2-3 seconds. AI will automatically identify the merchant name, total price, and itemize your purchases!
-            </p>
+            {previewImage && (
+              <div className="relative mx-auto max-h-48 overflow-hidden rounded-xl border border-slate-800">
+                <img
+                  src={previewImage}
+                  alt="Receipt Preview"
+                  className="w-full object-contain"
+                />
+              </div>
+            )}
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="mt-4 space-y-4">
-            {/* Type Toggle */}
-            <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-800/80 p-1">
+          /* Manual Transaction Form */
+          <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+            {/* 3 Type Pills: Expense / Income / Transfer */}
+            <div className="grid grid-cols-3 gap-2 rounded-2xl bg-slate-950/80 p-1 border border-slate-800">
               <button
                 type="button"
                 onClick={() => setType("EXPENSE")}
-                className={`rounded-lg py-1.5 text-xs font-bold transition-all ${
+                className={`rounded-xl py-2 text-xs font-bold transition-all ${
                   type === "EXPENSE"
                     ? "bg-rose-600 text-white shadow-md"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
-                Expense
+                Expense (支出)
               </button>
               <button
                 type="button"
                 onClick={() => setType("INCOME")}
-                className={`rounded-lg py-1.5 text-xs font-bold transition-all ${
+                className={`rounded-xl py-2 text-xs font-bold transition-all ${
                   type === "INCOME"
                     ? "bg-emerald-600 text-white shadow-md"
                     : "text-slate-400 hover:text-white"
                 }`}
               >
-                Income
+                Income (收入)
+              </button>
+              <button
+                type="button"
+                onClick={() => setType("TRANSFER")}
+                className={`rounded-xl py-2 text-xs font-bold transition-all ${
+                  type === "TRANSFER"
+                    ? "bg-indigo-600 text-white shadow-md"
+                    : "text-slate-400 hover:text-white"
+                }`}
+              >
+                Transfer (转账)
               </button>
             </div>
 
-            {/* Amount input */}
+            {/* Amount Input */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+              <label className="block text-xs font-medium text-slate-400 mb-1">
                 Amount ({currency})
               </label>
               <div className="relative">
-                <span className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">
+                <div className="pointer-events-none absolute inset-y-0 left-0 flex items-center pl-3 text-slate-500 font-bold">
                   {currency}
-                </span>
+                </div>
                 <input
                   type="number"
                   step="0.01"
@@ -293,93 +357,193 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => setAmount(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950/80 pl-14 pr-4 py-2.5 text-base font-bold text-white outline-none focus:border-blue-500 font-mono"
-                  autoFocus
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800/80 pl-14 pr-4 py-2.5 text-base font-bold text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                 />
               </div>
             </div>
 
-            {/* Category Selector */}
+            {/* Transfer Account Selection (From -> To) */}
+            {type === "TRANSFER" ? (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 rounded-2xl bg-indigo-950/20 border border-indigo-500/30">
+                <div>
+                  <label className="text-[11px] font-bold text-indigo-300">
+                    From Account (转出账户)
+                  </label>
+                  <select
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                  >
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({formatCurrency(acc.balance, currency)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-[11px] font-bold text-indigo-300">
+                    To Account (转入账户)
+                  </label>
+                  <select
+                    value={toAccountId}
+                    onChange={(e) => setToAccountId(e.target.value)}
+                    className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
+                  >
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({formatCurrency(acc.balance, currency)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : (
+              /* Account Selector for Expense/Income */
+              accounts.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    {type === "INCOME" ? "Deposit To Account" : "Payment Account (支付账户)"}
+                  </label>
+                  <select
+                    value={accountId}
+                    onChange={(e) => setAccountId(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2.5 text-xs text-white focus:border-blue-500 focus:outline-none"
+                  >
+                    <option value="">-- Select Wallet/Card (Optional) --</option>
+                    {accounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>
+                        {acc.name} ({acc.type} - {formatCurrency(acc.balance, currency)})
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )
+            )}
+
+            {/* Category & SubCategory (Hidden for Transfer) */}
             {type === "EXPENSE" && (
-              <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Category
-                </label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3.5 py-2.5 text-xs text-white outline-none focus:border-blue-500 cursor-pointer"
-                >
-                  {categories.map((cat) => (
-                    <option key={cat} value={cat}>
-                      {cat}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Category (一级主分类)
+                  </label>
+                  <select
+                    value={category}
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
+                  >
+                    {categories.map((cat) => (
+                      <option key={cat} value={cat}>
+                        {cat}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    SubCategory (二级子分类)
+                  </label>
+                  <select
+                    value={subCategory}
+                    onChange={(e) => setSubCategory(e.target.value)}
+                    className="w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
+                  >
+                    {(currentCategoryMeta.subCategories || ["General"]).map((sub) => (
+                      <option key={sub} value={sub}>
+                        {sub}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               </div>
             )}
 
-            {/* Description */}
+            {/* Description & Tags */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">
+                  Description / Merchant
+                </label>
+                <input
+                  type="text"
+                  placeholder={type === "TRANSFER" ? "e.g. Top up TNG" : "e.g. Starbucks, Shell Petrol"}
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-400 mb-1">
+                  Tags (标签, e.g. #Trip,#Work)
+                </label>
+                <input
+                  type="text"
+                  placeholder="#Vacation, #Reimburse"
+                  value={tags}
+                  onChange={(e) => setTags(e.target.value)}
+                  className="w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
+                />
+              </div>
+            </div>
+
+            {/* Date Picker */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Description / Merchant
+              <label className="block text-xs font-medium text-slate-400 mb-1">
+                Transaction Date
               </label>
               <input
-                type="text"
-                placeholder="e.g. Starbucks, Supermarket, Grab ride"
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3.5 py-2.5 text-xs text-white outline-none focus:border-blue-500"
+                type="date"
+                required
+                value={date}
+                onChange={(e) => setDate(e.target.value)}
+                className="w-full rounded-xl border border-slate-700 bg-slate-800/80 px-3.5 py-2 text-xs text-white focus:border-blue-500 focus:outline-none"
               />
             </div>
 
-            {/* Itemized Scanned Items Preview if any */}
+            {/* Scanned Items list if available */}
             {scannedItems.length > 0 && (
-              <div className="rounded-xl bg-purple-950/30 border border-purple-500/20 p-3 text-xs space-y-1.5">
-                <div className="font-semibold text-purple-300 flex items-center gap-1">
-                  <Sparkles className="h-3.5 w-3.5" />
-                  <span>Itemized Receipt Breakdown</span>
-                </div>
-                <div className="max-h-24 overflow-y-auto space-y-1 pr-1">
+              <div className="rounded-2xl border border-slate-800 bg-slate-950/60 p-3">
+                <p className="text-[11px] font-bold text-slate-400 mb-2">
+                  🧾 Detected Items ({scannedItems.length})
+                </p>
+                <div className="max-h-28 overflow-y-auto space-y-1">
                   {scannedItems.map((item, idx) => (
-                    <div key={idx} className="flex items-center justify-between text-slate-300 text-[11px]">
+                    <div
+                      key={idx}
+                      className="flex items-center justify-between text-xs text-slate-300"
+                    >
                       <span>{item.name}</span>
-                      <span className="font-mono">${item.price.toFixed(2)}</span>
+                      <span className="font-mono text-slate-400">
+                        {formatCurrency(item.price, currency)}
+                      </span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Date */}
-            <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                Date
-              </label>
-              <input
-                type="date"
-                value={date}
-                onChange={(e) => setDate(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950/80 px-3.5 py-2.5 text-xs text-white outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="flex gap-3 pt-2">
-              <button
-                type="button"
-                onClick={onClose}
-                className="w-1/2 rounded-xl border border-slate-700 bg-slate-800 px-4 py-2.5 text-xs font-semibold text-slate-300 hover:bg-slate-700 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                type="submit"
-                disabled={isSubmitting}
-                className="w-1/2 rounded-xl bg-blue-600 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-blue-500/30 hover:bg-blue-500 transition-all disabled:opacity-50"
-              >
-                {isSubmitting ? "Saving..." : "Save Entry"}
-              </button>
-            </div>
+            {/* Submit Button */}
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-indigo-600 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/25 transition-all hover:from-blue-500 hover:to-indigo-500 active:scale-[0.98] disabled:opacity-50"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <span>Saving Transaction...</span>
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Save Transaction</span>
+                </>
+              )}
+            </button>
           </form>
         )}
       </div>

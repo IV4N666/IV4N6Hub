@@ -14,25 +14,48 @@ import {
   PlusCircle,
   BarChart3,
   SlidersHorizontal,
+  ArrowRightLeft,
+  Repeat,
+  Download,
+  Vault,
 } from "lucide-react";
-import { MonthlyStats, YearlyStats, CategoryBudget, Transaction } from "@/lib/types";
+import {
+  MonthlyStats,
+  YearlyStats,
+  CategoryBudget,
+  Transaction,
+  Account,
+  TransactionType,
+} from "@/lib/types";
 import { MetricCards } from "@/components/finance/MetricCards";
 import { ExpenseCharts } from "@/components/finance/ExpenseCharts";
 import { CategoryBudgetList } from "@/components/finance/CategoryBudgetList";
 import { RecentTransactions } from "@/components/finance/RecentTransactions";
 import { AddTransactionModal } from "@/components/finance/AddTransactionModal";
+import { AccountBalanceGrid } from "@/components/finance/AccountBalanceGrid";
+import { RecurringBillsModal } from "@/components/finance/RecurringBillsModal";
 import { format, subMonths, addMonths } from "date-fns";
 
 export default function FinanceDashboard() {
   const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
   const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 7, 24)); // Default to August 2026
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("MYR");
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats | null>(null);
   const [yearlyStats, setYearlyStats] = useState<YearlyStats | null>(null);
   const [budgets, setBudgets] = useState<CategoryBudget[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
+  const [accountSummary, setAccountSummary] = useState({
+    totalAssets: 0,
+    totalLiabilities: 0,
+    netWorth: 0,
+  });
   const [loading, setLoading] = useState(true);
+
+  // Modals
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
+  const [modalInitialType, setModalInitialType] = useState<TransactionType>("EXPENSE");
+  const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
 
   const currentYearMonth = format(currentDate, "yyyy-MM");
   const currentYear = currentDate.getFullYear();
@@ -40,13 +63,15 @@ export default function FinanceDashboard() {
   const fetchData = async () => {
     try {
       setLoading(true);
-      const [statsRes, txRes] = await Promise.all([
+      const [statsRes, txRes, accRes] = await Promise.all([
         fetch(`/api/finance/stats?month=${currentYearMonth}&year=${currentYear}`),
         fetch(`/api/finance/transactions?limit=20`),
+        fetch(`/api/finance/accounts`),
       ]);
 
       const statsData = await statsRes.json();
       const txData = await txRes.json();
+      const accData = await accRes.json();
 
       if (statsData.success) {
         setMonthlyStats(statsData.monthly);
@@ -59,6 +84,13 @@ export default function FinanceDashboard() {
 
       if (txData.success) {
         setTransactions(txData.transactions || []);
+      }
+
+      if (accData.success) {
+        setAccounts(accData.accounts || []);
+        if (accData.summary) {
+          setAccountSummary(accData.summary);
+        }
       }
     } catch (err) {
       console.error("Failed to load dashboard data:", err);
@@ -79,6 +111,15 @@ export default function FinanceDashboard() {
   };
   const handleNextYear = () => {
     setCurrentDate((d) => new Date(d.getFullYear() + 1, d.getMonth(), 1));
+  };
+
+  const handleOpenModal = (type: TransactionType = "EXPENSE") => {
+    setModalInitialType(type);
+    setIsAddModalOpen(true);
+  };
+
+  const handleExportBackup = () => {
+    window.open("/api/finance/backup?format=csv", "_blank");
   };
 
   if (loading && !monthlyStats) {
@@ -111,20 +152,39 @@ export default function FinanceDashboard() {
                 </span>
               </div>
               <p className="text-xs text-slate-300 mt-0.5 leading-relaxed">
-                Send voice notes or text messages anytime on WhatsApp. AI automatically extracts the amount and updates this dashboard.
+                Send voice notes or text messages anytime on WhatsApp. AI automatically extracts amount & updates accounts.
               </p>
             </div>
           </div>
 
-          <Link
-            href="/whatsapp-hub"
-            className="flex items-center gap-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition-all active:scale-95 shrink-0"
-          >
-            <MessageSquare className="h-4 w-4" />
-            <span>Open WhatsApp Hub & Simulator</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setIsRecurringModalOpen(true)}
+              className="flex items-center gap-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 px-3.5 py-2 text-xs font-bold text-purple-200 transition-all active:scale-95 shrink-0"
+            >
+              <Repeat className="h-4 w-4 text-purple-400" />
+              <span>Subscriptions</span>
+            </button>
+
+            <Link
+              href="/whatsapp-hub"
+              className="flex items-center gap-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-emerald-600/25 transition-all active:scale-95 shrink-0"
+            >
+              <MessageSquare className="h-4 w-4" />
+              <span>WhatsApp Hub</span>
+            </Link>
+          </div>
         </div>
       </div>
+
+      {/* Multi-Account Balances & Net Worth (ezBookkeeping style) */}
+      <AccountBalanceGrid
+        accounts={accounts}
+        summary={accountSummary}
+        currency={currency}
+        onOpenTransferModal={() => handleOpenModal("TRANSFER")}
+        onRefresh={fetchData}
+      />
 
       {/* Control Bar: View Mode & Date Switchers */}
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
@@ -137,7 +197,7 @@ export default function FinanceDashboard() {
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
           {/* Monthly / Yearly Switcher */}
           <div className="flex rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs">
             <button
@@ -185,13 +245,22 @@ export default function FinanceDashboard() {
             </button>
           </div>
 
-          {/* Manual Add Button */}
+          {/* Quick Transfer & Add Buttons */}
           <button
-            onClick={() => setIsAddModalOpen(true)}
-            className="flex items-center gap-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3.5 py-2 text-xs font-semibold text-white transition-all active:scale-95"
+            onClick={() => handleOpenModal("TRANSFER")}
+            className="flex items-center gap-1.5 rounded-xl bg-indigo-600/30 hover:bg-indigo-600/50 border border-indigo-500/40 px-3 py-2 text-xs font-bold text-indigo-200 transition-all active:scale-95"
+            title="Transfer between accounts"
           >
-            <PlusCircle className="h-3.5 w-3.5 text-blue-400" />
-            <span>+ Manual Entry</span>
+            <ArrowRightLeft className="h-3.5 w-3.5" />
+            <span>Transfer</span>
+          </button>
+
+          <button
+            onClick={() => handleOpenModal("EXPENSE")}
+            className="flex items-center gap-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 px-3.5 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/25 transition-all active:scale-95"
+          >
+            <PlusCircle className="h-3.5 w-3.5" />
+            <span>+ Record</span>
           </button>
         </div>
       </div>
@@ -230,14 +299,24 @@ export default function FinanceDashboard() {
       <RecentTransactions
         transactions={transactions}
         currency={currency}
-        onOpenAddModal={() => setIsAddModalOpen(true)}
+        onOpenAddModal={() => handleOpenModal("EXPENSE")}
       />
 
+      {/* Modals */}
       <AddTransactionModal
         isOpen={isAddModalOpen}
         onClose={() => setIsAddModalOpen(false)}
         onSuccess={fetchData}
         currency={currency}
+        initialType={modalInitialType}
+      />
+
+      <RecurringBillsModal
+        isOpen={isRecurringModalOpen}
+        onClose={() => setIsRecurringModalOpen(false)}
+        currency={currency}
+        accounts={accounts}
+        onSuccess={fetchData}
       />
     </div>
   );

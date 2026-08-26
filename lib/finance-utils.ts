@@ -41,7 +41,7 @@ export function computeMonthlyStats(
       categoryMap[t.category].total += t.amount;
       categoryMap[t.category].count += 1;
       if (dailyMap[d]) dailyMap[d].expense += t.amount;
-    } else {
+    } else if (t.type === "INCOME") {
       totalIncome += t.amount;
       if (dailyMap[d]) dailyMap[d].income += t.amount;
     }
@@ -109,7 +109,7 @@ export function computeYearlyStats(
 
     monthTransactions.forEach((t) => {
       if (t.type === "EXPENSE") expense += t.amount;
-      else income += t.amount;
+      else if (t.type === "INCOME") income += t.amount;
     });
 
     return {
@@ -132,7 +132,7 @@ export function computeYearlyStats(
       if (t.type === "EXPENSE") {
         totalExpense += t.amount;
         categoryMap[t.category] = (categoryMap[t.category] || 0) + t.amount;
-      } else {
+      } else if (t.type === "INCOME") {
         totalIncome += t.amount;
       }
     });

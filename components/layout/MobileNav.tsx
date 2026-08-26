@@ -7,7 +7,7 @@ import {
   LayoutDashboard,
   Receipt,
   MessageSquare,
-  Grid,
+  Vault,
   Plus,
 } from "lucide-react";
 
@@ -20,9 +20,9 @@ export const MobileNav: React.FC<MobileNavProps> = ({ onOpenAddModal }) => {
 
   const navItems = [
     { name: "Finance", path: "/finance", icon: LayoutDashboard },
+    { name: "Accounts", path: "/accounts", icon: Vault },
     { name: "Ledger", path: "/transactions", icon: Receipt },
-    { name: "WhatsApp AI", path: "/whatsapp-hub", icon: MessageSquare, highlight: true },
-    { name: "Apps", path: "/modules", icon: Grid },
+    { name: "WhatsApp", path: "/whatsapp-hub", icon: MessageSquare, highlight: true },
   ];
 
   return (

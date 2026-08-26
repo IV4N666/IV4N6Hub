@@ -1,21 +1,15 @@
 {
-  "name": "IV4N6Hub - Multi-Purpose Platform & WhatsApp Finance",
+  "name": "IV4N6Hub Financial Command",
   "short_name": "IV4N6Hub",
-  "description": "Multi-purpose modular web platform with WhatsApp AI finance & spending analytics",
-  "start_url": "/",
+  "description": "Next-Gen AI Bookkeeping, Multi-Account Ledger & Financial Intelligence",
+  "start_url": "/finance",
   "display": "standalone",
-  "background_color": "#0f172a",
-  "theme_color": "#3b82f6",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
   "icons": [
     {
       "src": "/icon.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon.svg",
-      "sizes": "512x512",
+      "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
     }

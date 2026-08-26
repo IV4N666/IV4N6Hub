@@ -10,8 +10,11 @@ import {
   Globe,
   ArrowUpRight,
   ArrowDownLeft,
+  ArrowRightLeft,
   ChevronRight,
   Sparkles,
+  Camera,
+  Repeat,
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -44,6 +47,20 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
             <span>WA Text</span>
           </span>
         );
+      case "RECEIPT_OCR":
+        return (
+          <span className="flex items-center gap-1 rounded-md bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-amber-300 border border-amber-500/30">
+            <Camera className="h-3 w-3 text-amber-400" />
+            <span>OCR</span>
+          </span>
+        );
+      case "RECURRING":
+        return (
+          <span className="flex items-center gap-1 rounded-md bg-indigo-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-indigo-300 border border-indigo-500/30">
+            <Repeat className="h-3 w-3 text-indigo-400" />
+            <span>Auto-Bill</span>
+          </span>
+        );
       default:
         return (
           <span className="flex items-center gap-1 rounded-md bg-blue-500/15 px-1.5 py-0.5 text-[10px] font-semibold text-blue-300 border border-blue-500/30">
@@ -62,7 +79,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
             Recent Spending & Activity
           </h3>
           <p className="text-xs text-slate-400 mt-0.5">
-            Logged automatically via WhatsApp AI or manual web entry
+            Logged automatically via WhatsApp AI, Subscriptions, or Ledger entry
           </p>
         </div>
         <Link
@@ -91,6 +108,7 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
           {recent.map((tx) => {
             const meta = getCategoryMeta(tx.category);
             const isIncome = tx.type === "INCOME";
+            const isTransfer = tx.type === "TRANSFER";
 
             return (
               <div
@@ -100,12 +118,16 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                 <div className="flex items-center gap-3">
                   <div
                     className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
-                      isIncome
+                      isTransfer
+                        ? "bg-indigo-500/10 text-indigo-400 border-indigo-500/20"
+                        : isIncome
                         ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
                         : "bg-red-500/10 text-red-400 border-red-500/20"
                     }`}
                   >
-                    {isIncome ? (
+                    {isTransfer ? (
+                      <ArrowRightLeft className="h-4 w-4" />
+                    ) : isIncome ? (
                       <ArrowDownLeft className="h-5 w-5" />
                     ) : (
                       <ArrowUpRight className="h-5 w-5" />
@@ -117,15 +139,38 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                         {tx.description || tx.category}
                       </span>
                       {getSourceBadge(tx.source)}
+                      {tx.subCategory && (
+                        <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                          {tx.subCategory}
+                        </span>
+                      )}
                     </div>
-                    <div className="flex items-center gap-2 mt-0.5 text-xs text-slate-400">
-                      <span
-                        className="h-2 w-2 rounded-full"
-                        style={{ backgroundColor: meta.color }}
-                      />
-                      <span>{tx.category}</span>
+                    <div className="flex flex-wrap items-center gap-2 mt-0.5 text-xs text-slate-400">
+                      {isTransfer ? (
+                        <span className="text-indigo-300 font-medium text-[11px]">
+                          {tx.account?.name || "Account"} ➔ {tx.toAccount?.name || "Target"}
+                        </span>
+                      ) : (
+                        <>
+                          <span
+                            className="h-2 w-2 rounded-full"
+                            style={{ backgroundColor: meta.color }}
+                          />
+                          <span>{tx.category}</span>
+                          {tx.account && (
+                            <span className="text-slate-400">
+                              💳 {tx.account.name}
+                            </span>
+                          )}
+                        </>
+                      )}
                       <span>•</span>
                       <span>{format(new Date(tx.date), "MMM d, yyyy")}</span>
+                      {tx.tags && (
+                        <span className="text-[10px] text-cyan-400">
+                          {tx.tags}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -133,10 +178,14 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                 <div className="text-right">
                   <div
                     className={`text-sm font-bold ${
-                      isIncome ? "text-emerald-400" : "text-slate-100"
+                      isTransfer
+                        ? "text-indigo-300"
+                        : isIncome
+                        ? "text-emerald-400"
+                        : "text-slate-100"
                     }`}
                   >
-                    {isIncome ? "+" : "-"}
+                    {isTransfer ? "↔ " : isIncome ? "+" : "-"}
                     {formatCurrency(tx.amount, tx.currency || currency)}
                   </div>
                   {tx.rawInput && (

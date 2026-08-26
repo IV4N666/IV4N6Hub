@@ -10,19 +10,66 @@ datasource db {
 model Transaction {
   id          String   @id @default(cuid())
   amount      Float
-  type        String   @default("EXPENSE") // "EXPENSE" | "INCOME"
+  type        String   @default("EXPENSE") // "EXPENSE" | "INCOME" | "TRANSFER"
   category    String   @default("Other")
+  subCategory String?
+  tags        String?  // e.g. "#Food,#Work"
   description String?
-  source      String   @default("WEB_MANUAL") // "WEB_MANUAL" | "WHATSAPP_TEXT" | "WHATSAPP_VOICE" | "API"
+  source      String   @default("WEB_MANUAL") // "WEB_MANUAL" | "WHATSAPP_TEXT" | "WHATSAPP_VOICE" | "API" | "RECURRING"
   rawInput    String?
   currency    String   @default("USD")
+  accountId   String?  // Source account
+  toAccountId String?  // Destination account for TRANSFER
   date        DateTime @default(now())
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
+  account     Account? @relation("AccountTransactions", fields: [accountId], references: [id], onDelete: SetNull)
+  toAccount   Account? @relation("AccountTransfersIn", fields: [toAccountId], references: [id], onDelete: SetNull)
+
   @@index([date])
   @@index([category])
   @@index([type])
+  @@index([accountId])
+}
+
+model Account {
+  id             String   @id @default(cuid())
+  name           String
+  type           String   @default("BANK") // "CASH" | "BANK" | "E_WALLET" | "CREDIT_CARD" | "INVESTMENT" | "OTHER"
+  currency       String   @default("MYR")
+  balance        Float    @default(0)
+  initialBalance Float    @default(0)
+  color          String   @default("#3b82f6")
+  icon           String   @default("Wallet")
+  isArchived     Boolean  @default(false)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  transactions   Transaction[] @relation("AccountTransactions")
+  transfersIn    Transaction[] @relation("AccountTransfersIn")
+  recurringBills RecurringBill[]
+
+  @@index([type])
+}
+
+model RecurringBill {
+  id          String    @id @default(cuid())
+  name        String
+  amount      Float
+  type        String    @default("EXPENSE") // "EXPENSE" | "INCOME"
+  category    String    @default("Bills & Utilities")
+  subCategory String?
+  frequency   String    @default("MONTHLY") // "DAILY" | "WEEKLY" | "MONTHLY" | "YEARLY"
+  nextDueDate DateTime  @default(now())
+  lastPaidDate DateTime?
+  isActive    Boolean   @default(true)
+  autoExecute Boolean   @default(false)
+  accountId   String?
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  account     Account?  @relation(fields: [accountId], references: [id], onDelete: SetNull)
 }
 
 model CategoryBudget {

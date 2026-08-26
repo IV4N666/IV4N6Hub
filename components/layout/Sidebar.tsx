@@ -15,6 +15,7 @@ import {
   Zap,
   Monitor,
   StickyNote,
+  Vault,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -30,6 +31,13 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
       path: "/finance",
       icon: LayoutDashboard,
       badge: "Live",
+    },
+    {
+      name: "Accounts & Assets",
+      path: "/accounts",
+      icon: Vault,
+      badge: "Net Worth",
+      highlight: true,
     },
     {
       name: "Transactions",
