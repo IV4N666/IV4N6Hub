@@ -10,35 +10,40 @@ export async function GET(request: NextRequest) {
     const month = searchParams.get("month") || new Date().toISOString().slice(0, 7); // "YYYY-MM"
     const year = parseInt(searchParams.get("year") || String(new Date().getFullYear()), 10);
 
-    // Fetch all transactions
-    const rawTransactions = await db.transaction.findMany({
-      orderBy: { date: "desc" },
-    });
+    // Parallel fetch transactions, budgets, and config
+    const [rawTransactions, budgets, config] = await Promise.all([
+      db.transaction.findMany({
+        select: {
+          id: true,
+          amount: true,
+          type: true,
+          category: true,
+          currency: true,
+          date: true,
+        },
+        orderBy: { date: "desc" },
+      }),
+      db.categoryBudget.findMany(),
+      db.appConfig.findFirst(),
+    ]);
 
     // Format for calculations
     const transactions = rawTransactions.map((t) => ({
       ...t,
       date: t.date.toISOString(),
-      createdAt: t.createdAt.toISOString(),
-      updatedAt: t.updatedAt.toISOString(),
+      source: "WEB_MANUAL",
     }));
 
     // Compute monthly and yearly stats
     const monthly = computeMonthlyStats(transactions as any, month);
     const yearly = computeYearlyStats(transactions as any, year);
 
-    // Fetch budgets
-    const budgets = await db.categoryBudget.findMany();
-
-    // Fetch app config
-    const config = await db.appConfig.findFirst();
-
     return NextResponse.json({
       success: true,
       monthly,
       yearly,
       budgets,
-      config: config || { defaultCurrency: "USD" },
+      config: config || { defaultCurrency: "MYR" },
     });
   } catch (error: any) {
     console.error("Error fetching financial stats:", error);
