@@ -38,7 +38,7 @@ import { format, subMonths, addMonths } from "date-fns";
 
 export default function FinanceDashboard() {
   const [viewMode, setViewMode] = useState<"monthly" | "yearly">("monthly");
-  const [currentDate, setCurrentDate] = useState<Date>(new Date(2026, 7, 24)); // Default to August 2026
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [currency, setCurrency] = useState("MYR");
   const [monthlyStats, setMonthlyStats] = useState<MonthlyStats | null>(null);
   const [yearlyStats, setYearlyStats] = useState<YearlyStats | null>(null);

@@ -38,6 +38,18 @@ const STANDARD_CATEGORIES = [
   "Other",
 ];
 
+export function getTodayDateString(timeZone = "Asia/Kuala_Lumpur"): string {
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone }).format(new Date());
+  } catch {
+    const d = new Date();
+    const year = d.getFullYear();
+    const month = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+}
+
 export async function parseTextWithAI(
   text: string,
   userApiKey?: string,
@@ -56,7 +68,7 @@ export async function parseTextWithAI(
         },
       });
 
-      const today = new Date().toISOString().split("T")[0];
+      const today = getTodayDateString();
       const prompt = `You are a financial assistant for an expense tracker. 
 Analyze this user text input: "${text}"
 Current Date reference: ${today}
@@ -114,7 +126,7 @@ export async function parseAudioWithAI(
       category: "Other",
       description: "Audio received (Add GEMINI_API_KEY to enable speech-to-text AI extraction)",
       currency: defaultCurrency,
-      date: new Date().toISOString().split("T")[0],
+      date: getTodayDateString(),
       confidence: 0.1,
       transcript: "[Audio transcription requires Gemini API Key]",
     };
@@ -130,7 +142,7 @@ export async function parseAudioWithAI(
       },
     });
 
-    const today = new Date().toISOString().split("T")[0];
+    const today = getTodayDateString();
     const prompt = `Listen to this user's voice message regarding a financial transaction or expense/income.
 Current Date: ${today}
 Default Currency: ${defaultCurrency}
@@ -146,7 +158,8 @@ Extract and return ONLY a JSON object:
   "currency": string,
   "date": string (ISO YYYY-MM-DD format),
   "confidence": number
-}`;
+}
+`;
 
     const audioPart = {
       inlineData: {
@@ -199,7 +212,7 @@ export async function parseReceiptImageWithAI(
     },
   });
 
-  const today = new Date().toISOString().split("T")[0];
+  const today = getTodayDateString();
   const prompt = `You are an expert OCR financial receipt and invoice scanner.
 Analyze this receipt/invoice photo carefully.
 Current Reference Date: ${today}
@@ -254,7 +267,7 @@ export async function parseSmartVoiceIntent(
   defaultCurrency = "USD"
 ): Promise<SmartIntentResult> {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
-  const today = new Date().toISOString().split("T")[0];
+  const today = getTodayDateString();
 
   if (apiKey) {
     try {
@@ -330,7 +343,7 @@ Return ONLY JSON:
 
 function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParsedExpense {
   const lower = text.toLowerCase();
-  const today = new Date().toISOString().split("T")[0];
+  const today = getTodayDateString();
 
   const isIncome =
     lower.includes("salary") ||

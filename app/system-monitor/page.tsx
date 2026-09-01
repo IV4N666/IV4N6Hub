@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Cpu,
   HardDrive,
@@ -19,6 +19,9 @@ import {
   Sparkles,
   ShieldCheck,
   CheckCircle2,
+  Laptop,
+  Cloud,
+  Info,
 } from "lucide-react";
 import {
   AreaChart,
@@ -77,6 +80,8 @@ interface ClientHardwareInfo {
   dischargingTime?: number;
   online: boolean;
   pingMs?: number;
+  browserName: string;
+  osName: string;
 }
 
 export default function SystemMonitorPage() {
@@ -87,6 +92,7 @@ export default function SystemMonitorPage() {
   const [refreshInterval, setRefreshInterval] = useState<number>(2000); // 2 seconds
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<"ALL" | "DEVICE" | "SERVER">("ALL");
 
   // Detect Client-Side Hardware (GPU, Battery, Screen, Network)
   useEffect(() => {
@@ -130,6 +136,20 @@ export default function SystemMonitorPage() {
         console.warn("Battery API unavailable");
       }
 
+      // Browser & OS detection
+      let osName = "Unknown OS";
+      const ua = navigator.userAgent;
+      if (ua.indexOf("Win") !== -1) osName = "Windows PC";
+      else if (ua.indexOf("Mac") !== -1) osName = "Apple macOS / iOS";
+      else if (ua.indexOf("Android") !== -1) osName = "Android Device";
+      else if (ua.indexOf("Linux") !== -1) osName = "Linux Device";
+
+      let browserName = "Web Browser";
+      if (ua.indexOf("Chrome") !== -1) browserName = "Google Chrome / Chromium";
+      else if (ua.indexOf("Safari") !== -1) browserName = "Apple Safari";
+      else if (ua.indexOf("Firefox") !== -1) browserName = "Mozilla Firefox";
+      else if (ua.indexOf("Edg") !== -1) browserName = "Microsoft Edge";
+
       const info: ClientHardwareInfo = {
         gpuRenderer,
         gpuVendor,
@@ -142,6 +162,8 @@ export default function SystemMonitorPage() {
         batteryLevel: batteryInfo.level,
         isCharging: batteryInfo.charging,
         online: navigator.onLine,
+        browserName,
+        osName,
       };
 
       setClientInfo(info);
@@ -183,7 +205,6 @@ export default function SystemMonitorPage() {
               ram: data.memory.usagePercent,
             },
           ];
-          // Keep last 25 data points
           return updated.slice(-25);
         });
       }
@@ -215,7 +236,7 @@ export default function SystemMonitorPage() {
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-2xl font-black tracking-tight text-white">
-                  PC & System Hardware Monitor
+                  System & Hardware Telemetry (硬件监控)
                 </h1>
                 <span className="flex items-center gap-1 rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-400 border border-emerald-500/20">
                   <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-ping" />
@@ -223,7 +244,7 @@ export default function SystemMonitorPage() {
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Real-time workstation diagnostics, CPU, RAM, GPU, battery & network telemetry.
+                Dual telemetry architecture: Local Client Device hardware & Cloud Backend metrics
               </p>
             </div>
           </div>
@@ -263,149 +284,207 @@ export default function SystemMonitorPage() {
         </div>
       </div>
 
+      {/* Architecture Context Banner */}
+      <div className="rounded-2xl border border-blue-500/20 bg-blue-950/20 p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs text-slate-300">
+        <div className="flex items-center gap-2.5">
+          <Info className="h-5 w-5 text-cyan-400 shrink-0" />
+          <div>
+            <span className="font-bold text-white">Dual Telemetry Explanation: </span>
+            <span>
+              <strong>Client Device</strong> cards measure the laptop/phone you are holding right now.{" "}
+              <strong>Cloud Server</strong> cards measure the host where your IV4N6Hub backend runs.
+            </span>
+          </div>
+        </div>
+
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-1 rounded-xl bg-slate-900/90 p-1 border border-slate-800 shrink-0">
+          <button
+            onClick={() => setActiveTab("ALL")}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+              activeTab === "ALL"
+                ? "bg-blue-600 text-white shadow-md"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <span>📊 All Metrics</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("DEVICE")}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+              activeTab === "DEVICE"
+                ? "bg-emerald-600 text-white shadow-md"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Laptop className="h-3.5 w-3.5" />
+            <span>This Device</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("SERVER")}
+            className={`flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all ${
+              activeTab === "SERVER"
+                ? "bg-purple-600 text-white shadow-md"
+                : "text-slate-400 hover:text-white"
+            }`}
+          >
+            <Cloud className="h-3.5 w-3.5" />
+            <span>Cloud Host</span>
+          </button>
+        </div>
+      </div>
+
       {/* 4 Core Primary Metric Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        {/* CPU Card */}
-        <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-cyan-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
-          <div className="absolute top-0 right-0 h-24 w-24 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
-              <Cpu className="h-4 w-4" />
-              <span>Processor (CPU)</span>
-            </span>
-            <span className="text-xs font-mono font-bold text-slate-300">
-              {metrics ? `${metrics.cpu.cores} Cores` : "Detecting..."}
-            </span>
-          </div>
-
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-3xl font-black text-white tracking-tight">
-              {metrics ? `${metrics.cpu.usagePercent}%` : "--"}
-            </span>
-            <span className="text-xs text-slate-400">Load</span>
-          </div>
-
-          {/* Progress bar */}
-          <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-            <div
-              className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
-              style={{ width: `${metrics ? metrics.cpu.usagePercent : 0}%` }}
-            />
-          </div>
-
-          <p className="text-[11px] text-slate-400 mt-3 truncate font-mono" title={metrics?.cpu.model}>
-            {metrics?.cpu.model || "Loading CPU architecture..."}
-          </p>
-        </div>
-
-        {/* RAM Card */}
-        <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-purple-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
-          <div className="absolute top-0 right-0 h-24 w-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
-              <Layers className="h-4 w-4" />
-              <span>Memory (RAM)</span>
-            </span>
-            <span className="text-xs font-mono font-bold text-slate-300">
-              {metrics ? `${metrics.memory.usedGb} / ${metrics.memory.totalGb} GB` : "--"}
-            </span>
-          </div>
-
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-3xl font-black text-white tracking-tight">
-              {metrics ? `${metrics.memory.usagePercent}%` : "--"}
-            </span>
-            <span className="text-xs text-slate-400">
-              ({metrics ? `${metrics.memory.freeGb} GB Free` : "--"})
-            </span>
-          </div>
-
-          {/* Progress bar */}
-          <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 ${
-                (metrics?.memory.usagePercent || 0) > 85
-                  ? "bg-gradient-to-r from-purple-500 to-rose-500"
-                  : "bg-gradient-to-r from-purple-500 to-indigo-500"
-              }`}
-              style={{ width: `${metrics ? metrics.memory.usagePercent : 0}%` }}
-            />
-          </div>
-
-          <p className="text-[11px] text-slate-400 mt-3 flex items-center justify-between">
-            <span>Process Heap: {metrics?.process.memoryUsedMb || 0} MB</span>
-            <span className="text-purple-300 font-mono text-[10px]">DDR Active</span>
-          </p>
-        </div>
-
-        {/* Graphics GPU Card */}
-        <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-emerald-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
-          <div className="absolute top-0 right-0 h-24 w-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
-              <Zap className="h-4 w-4" />
-              <span>Graphics (GPU)</span>
-            </span>
-            <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
-              Hardware Accel
-            </span>
-          </div>
-
-          <div className="mb-2">
-            <div className="text-sm font-black text-white line-clamp-2 leading-tight">
-              {clientInfo?.gpuRenderer || "DirectX / WebGL GPU"}
+        {/* CPU Card (Server) */}
+        {(activeTab === "ALL" || activeTab === "SERVER") && (
+          <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-cyan-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
+            <div className="absolute top-0 right-0 h-24 w-24 bg-cyan-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-cyan-400 flex items-center gap-1.5">
+                <Cpu className="h-4 w-4" />
+                <span>Host CPU (Cloud)</span>
+              </span>
+              <span className="text-[10px] font-bold text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-full border border-cyan-500/20">
+                ☁️ Server
+              </span>
             </div>
+
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-black text-white tracking-tight">
+                {metrics ? `${metrics.cpu.usagePercent}%` : "--"}
+              </span>
+              <span className="text-xs text-slate-400">Load ({metrics ? `${metrics.cpu.cores} Cores` : "--"})</span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 transition-all duration-500"
+                style={{ width: `${metrics ? metrics.cpu.usagePercent : 0}%` }}
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-400 mt-3 truncate font-mono" title={metrics?.cpu.model}>
+              {metrics?.cpu.model || "Loading Host CPU..."}
+            </p>
           </div>
+        )}
 
-          <p className="text-[11px] text-slate-400 mt-4 flex items-center justify-between pt-1 border-t border-slate-800">
-            <span>Display: {clientInfo ? `${clientInfo.screenWidth}×${clientInfo.screenHeight}` : "--"}</span>
-            <span className="text-emerald-400 font-mono">DPR {clientInfo?.pixelRatio || 1}x</span>
-          </p>
-        </div>
+        {/* RAM Card (Server) */}
+        {(activeTab === "ALL" || activeTab === "SERVER") && (
+          <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-purple-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
+            <div className="absolute top-0 right-0 h-24 w-24 bg-purple-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-purple-400 flex items-center gap-1.5">
+                <Layers className="h-4 w-4" />
+                <span>Host RAM (Cloud)</span>
+              </span>
+              <span className="text-[10px] font-bold text-purple-300 bg-purple-500/10 px-2 py-0.5 rounded-full border border-purple-500/20">
+                ☁️ Server
+              </span>
+            </div>
 
-        {/* Battery & Power Card */}
-        <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-amber-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
-          <div className="absolute top-0 right-0 h-24 w-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
-          <div className="flex items-center justify-between mb-3">
-            <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-              {clientInfo?.isCharging ? (
-                <BatteryCharging className="h-4 w-4 text-emerald-400 animate-pulse" />
-              ) : (
-                <Battery className="h-4 w-4" />
-              )}
-              <span>Power & Battery</span>
-            </span>
-            <span className="text-xs font-mono font-bold text-slate-300">
-              {clientInfo?.isCharging ? "⚡ AC Connected" : "On Battery / Power"}
-            </span>
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-black text-white tracking-tight">
+                {metrics ? `${metrics.memory.usagePercent}%` : "--"}
+              </span>
+              <span className="text-xs text-slate-400">
+                ({metrics ? `${metrics.memory.usedGb} / ${metrics.memory.totalGb} GB` : "--"})
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  (metrics?.memory.usagePercent || 0) > 85
+                    ? "bg-gradient-to-r from-purple-500 to-rose-500"
+                    : "bg-gradient-to-r from-purple-500 to-indigo-500"
+                }`}
+                style={{ width: `${metrics ? metrics.memory.usagePercent : 0}%` }}
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-400 mt-3 flex items-center justify-between">
+              <span>Process Heap: {metrics?.process.memoryUsedMb || 0} MB</span>
+              <span className="text-purple-300 font-mono text-[10px]">Node.js Runtime</span>
+            </p>
           </div>
+        )}
 
-          <div className="flex items-baseline gap-2 mb-2">
-            <span className="text-3xl font-black text-white tracking-tight">
-              {clientInfo?.batteryLevel !== undefined ? `${clientInfo.batteryLevel}%` : "AC Powered"}
-            </span>
-            {clientInfo?.batteryLevel !== undefined && (
-              <span className="text-xs text-slate-400">Capacity</span>
-            )}
+        {/* Graphics GPU Card (Client) */}
+        {(activeTab === "ALL" || activeTab === "DEVICE") && (
+          <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-emerald-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
+            <div className="absolute top-0 right-0 h-24 w-24 bg-emerald-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-emerald-400 flex items-center gap-1.5">
+                <Zap className="h-4 w-4" />
+                <span>Device Graphics (GPU)</span>
+              </span>
+              <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                💻 This Device
+              </span>
+            </div>
+
+            <div className="mb-2">
+              <div className="text-sm font-black text-white line-clamp-2 leading-tight">
+                {clientInfo?.gpuRenderer || "DirectX / WebGL GPU"}
+              </div>
+            </div>
+
+            <p className="text-[11px] text-slate-400 mt-4 flex items-center justify-between pt-1 border-t border-slate-800">
+              <span>Display: {clientInfo ? `${clientInfo.screenWidth}×${clientInfo.screenHeight}` : "--"}</span>
+              <span className="text-emerald-400 font-mono">{clientInfo?.osName || "Active PC"}</span>
+            </p>
           </div>
+        )}
 
-          {/* Progress bar if battery available */}
-          <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
-            <div
-              className={`h-full transition-all duration-500 ${
-                clientInfo?.isCharging
-                  ? "bg-gradient-to-r from-emerald-500 to-teal-400"
-                  : "bg-gradient-to-r from-amber-500 to-yellow-400"
-              }`}
-              style={{ width: `${clientInfo?.batteryLevel !== undefined ? clientInfo.batteryLevel : 100}%` }}
-            />
+        {/* Battery & Power Card (Client) */}
+        {(activeTab === "ALL" || activeTab === "DEVICE") && (
+          <div className="glass-card relative overflow-hidden rounded-3xl p-5 border border-amber-500/20 bg-gradient-to-br from-slate-900/90 to-slate-950/90 shadow-xl">
+            <div className="absolute top-0 right-0 h-24 w-24 bg-amber-500/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                {clientInfo?.isCharging ? (
+                  <BatteryCharging className="h-4 w-4 text-emerald-400 animate-pulse" />
+                ) : (
+                  <Battery className="h-4 w-4" />
+                )}
+                <span>Device Battery & Power</span>
+              </span>
+              <span className="text-[10px] font-bold text-amber-300 bg-amber-500/10 px-2 py-0.5 rounded-full border border-amber-500/20">
+                💻 This Device
+              </span>
+            </div>
+
+            <div className="flex items-baseline gap-2 mb-2">
+              <span className="text-3xl font-black text-white tracking-tight">
+                {clientInfo?.batteryLevel !== undefined ? `${clientInfo.batteryLevel}%` : "AC Powered"}
+              </span>
+              <span className="text-xs text-slate-400">
+                {clientInfo?.isCharging ? "⚡ Charging" : "On Battery"}
+              </span>
+            </div>
+
+            {/* Progress bar */}
+            <div className="h-2 w-full rounded-full bg-slate-800 overflow-hidden">
+              <div
+                className={`h-full transition-all duration-500 ${
+                  clientInfo?.isCharging
+                    ? "bg-gradient-to-r from-emerald-500 to-teal-400"
+                    : "bg-gradient-to-r from-amber-500 to-yellow-400"
+                }`}
+                style={{ width: `${clientInfo?.batteryLevel !== undefined ? clientInfo.batteryLevel : 100}%` }}
+              />
+            </div>
+
+            <p className="text-[11px] text-slate-400 mt-3 flex items-center justify-between">
+              <span>Ping Latency: {clientInfo?.pingMs || 12} ms</span>
+              <span className="text-emerald-400 font-semibold">● Stable Link</span>
+            </p>
           </div>
-
-          <p className="text-[11px] text-slate-400 mt-3 flex items-center justify-between">
-            <span>Ping Latency: {clientInfo?.pingMs || 12} ms</span>
-            <span className="text-emerald-400 font-semibold">● Stable</span>
-          </p>
-        </div>
+        )}
       </div>
 
       {/* Real-time Telemetry Graph */}
@@ -414,10 +493,10 @@ export default function SystemMonitorPage() {
           <div>
             <h2 className="text-base font-bold text-white flex items-center gap-2">
               <Gauge className="h-4 w-4 text-cyan-400" />
-              <span>Real-Time CPU & Memory Waveform</span>
+              <span>Real-Time Host Resource Waveform</span>
             </h2>
             <p className="text-xs text-slate-400">
-              Continuous 25-frame historical resource load trend
+              Continuous 25-frame historical resource load trend on cloud host
             </p>
           </div>
 
@@ -482,12 +561,17 @@ export default function SystemMonitorPage() {
 
       {/* Hardware & OS Technical Specs Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        {/* Workstation & OS info */}
+        {/* Workstation & OS info (Server) */}
         <div className="glass-card rounded-3xl p-6 border border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-            <Server className="h-4 w-4 text-blue-400" />
-            <span>Operating System & Host</span>
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+              <Server className="h-4 w-4 text-blue-400" />
+              <span>Host Server & OS</span>
+            </h3>
+            <span className="text-[10px] font-bold text-blue-300 bg-blue-500/10 px-2 py-0.5 rounded-full border border-blue-500/20">
+              ☁️ Cloud
+            </span>
+          </div>
 
           <div className="space-y-2.5 text-xs">
             <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
@@ -503,7 +587,7 @@ export default function SystemMonitorPage() {
               <span className="font-mono text-cyan-400 font-bold">{metrics?.os.arch.toUpperCase() || "X64"}</span>
             </div>
             <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
-              <span className="text-slate-400">System Uptime</span>
+              <span className="text-slate-400">Host Uptime</span>
               <span className="font-mono text-emerald-400 font-semibold flex items-center gap-1">
                 <Clock className="h-3 w-3" />
                 {metrics?.os.uptimeFormatted || "0s"}
@@ -516,14 +600,23 @@ export default function SystemMonitorPage() {
           </div>
         </div>
 
-        {/* Display & Graphic Details */}
+        {/* Display & Graphic Details (Client) */}
         <div className="glass-card rounded-3xl p-6 border border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-            <Monitor className="h-4 w-4 text-emerald-400" />
-            <span>Client Display & Graphics</span>
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+              <Monitor className="h-4 w-4 text-emerald-400" />
+              <span>Current Device Details</span>
+            </h3>
+            <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              💻 This Device
+            </span>
+          </div>
 
           <div className="space-y-2.5 text-xs">
+            <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
+              <span className="text-slate-400">Operating System</span>
+              <span className="font-semibold text-white">{clientInfo?.osName || "Detecting..."}</span>
+            </div>
             <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
               <span className="text-slate-400">Resolution</span>
               <span className="font-mono font-semibold text-white">
@@ -535,33 +628,34 @@ export default function SystemMonitorPage() {
               <span className="font-mono text-slate-200">{clientInfo?.pixelRatio || 1}x Scale</span>
             </div>
             <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
-              <span className="text-slate-400">Color Depth</span>
-              <span className="font-mono text-slate-200">{clientInfo?.colorDepth || 24}-bit TrueColor</span>
-            </div>
-            <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
               <span className="text-slate-400">Client Concurrency</span>
               <span className="font-mono text-purple-400 font-bold">{clientInfo?.logicalCores || 4} Threads</span>
             </div>
             <div className="flex items-center justify-between py-1.5">
-              <span className="text-slate-400">GPU Vendor</span>
-              <span className="font-mono text-emerald-400 truncate max-w-[150px]">{clientInfo?.gpuVendor || "Standard"}</span>
+              <span className="text-slate-400">Browser Client</span>
+              <span className="font-mono text-emerald-400 truncate max-w-[150px]">{clientInfo?.browserName || "Browser"}</span>
             </div>
           </div>
         </div>
 
         {/* Network & Connectivity */}
         <div className="glass-card rounded-3xl p-6 border border-slate-800 space-y-4">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
-            <Wifi className="h-4 w-4 text-amber-400" />
-            <span>Network Interfaces & Status</span>
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-200 flex items-center gap-2">
+              <Wifi className="h-4 w-4 text-amber-400" />
+              <span>Network & Latency</span>
+            </h3>
+            <span className="text-[10px] font-bold text-emerald-300 bg-emerald-500/10 px-2 py-0.5 rounded-full border border-emerald-500/20">
+              ● Connected
+            </span>
+          </div>
 
           <div className="space-y-2.5 text-xs">
             <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
               <span className="text-slate-400">Connection State</span>
               <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
                 <CheckCircle2 className="h-3.5 w-3.5" />
-                Online & Connected
+                Online & Synchronized
               </span>
             </div>
             <div className="flex items-center justify-between py-1.5 border-b border-slate-800/80">
@@ -582,7 +676,7 @@ export default function SystemMonitorPage() {
               </div>
             )}
             <div className="flex items-center justify-between py-1.5">
-              <span className="text-slate-400">Data Stream</span>
+              <span className="text-slate-400">Data Channel</span>
               <span className="text-slate-300 font-mono">Telemetry Encrypted</span>
             </div>
           </div>

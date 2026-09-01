@@ -45,6 +45,7 @@ export default function TransactionsLedger() {
   const [editSubCategory, setEditSubCategory] = useState("");
   const [editTags, setEditTags] = useState("");
   const [editDesc, setEditDesc] = useState("");
+  const [editDate, setEditDate] = useState("");
 
   // Import / Export Modal
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -112,6 +113,7 @@ export default function TransactionsLedger() {
     setEditSubCategory(tx.subCategory || "");
     setEditTags(tx.tags || "");
     setEditDesc(tx.description || "");
+    setEditDate(format(new Date(tx.date), "yyyy-MM-dd"));
   };
 
   const handleSaveEdit = async () => {
@@ -127,6 +129,7 @@ export default function TransactionsLedger() {
           subCategory: editSubCategory || null,
           tags: editTags || null,
           description: editDesc,
+          date: editDate ? new Date(editDate).toISOString() : undefined,
         }),
       });
       if (res.ok) {
@@ -384,22 +387,31 @@ export default function TransactionsLedger() {
                             value={editDesc}
                             onChange={(e) => setEditDesc(e.target.value)}
                             placeholder="Description"
-                            className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
+                            className="w-full rounded-lg border border-slate-700 bg-slate-800 px-2.5 py-1 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                           />
-                          <div className="flex items-center gap-2">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <input
+                              type="date"
+                              required
+                              value={editDate}
+                              onChange={(e) => setEditDate(e.target.value)}
+                              title="Payment Date"
+                              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                            />
                             <input
                               type="number"
                               step="0.01"
                               value={editAmount}
                               onChange={(e) => setEditAmount(e.target.value)}
-                              className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
+                              placeholder="Amount"
+                              className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none font-mono"
                             />
                             <input
                               type="text"
                               value={editTags}
                               onChange={(e) => setEditTags(e.target.value)}
                               placeholder="#Tags"
-                              className="w-28 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white"
+                              className="w-28 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                             />
                           </div>
                         </div>

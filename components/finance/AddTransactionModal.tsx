@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { CATEGORY_DEFINITIONS, getCategoryMeta, formatCurrency } from "@/lib/category-meta";
 import { Account, TransactionType } from "@/lib/types";
+import { format } from "date-fns";
 
 interface AddTransactionModalProps {
   isOpen: boolean;
@@ -43,7 +44,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const [subCategory, setSubCategory] = useState("Lunch");
   const [tags, setTags] = useState("");
   const [description, setDescription] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [accountId, setAccountId] = useState<string>("");
   const [toAccountId, setToAccountId] = useState<string>("");
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -60,6 +61,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setType(initialType);
+      setDate(format(new Date(), "yyyy-MM-dd"));
       fetch("/api/finance/accounts")
         .then((res) => res.json())
         .then((data) => {

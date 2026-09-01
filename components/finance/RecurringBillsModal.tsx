@@ -50,7 +50,7 @@ export const RecurringBillsModal: React.FC<RecurringBillsModalProps> = ({
   const [category, setCategory] = useState("Bills & Utilities");
   const [frequency, setFrequency] = useState<RecurringFrequency>("MONTHLY");
   const [nextDueDate, setNextDueDate] = useState(
-    new Date().toISOString().split("T")[0]
+    format(new Date(), "yyyy-MM-dd")
   );
   const [accountId, setAccountId] = useState<string>("");
 
