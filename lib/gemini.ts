@@ -89,14 +89,17 @@ Default Currency: ${defaultCurrency}
 
 Available Categories: ${STANDARD_CATEGORIES.join(", ")}
 
+Language Support: The user may write in Mandarin Chinese (中文 / 华语), Cantonese, English, Malay, or mixed multilingual slang (e.g. "吃午餐25块", "打油50块", "买衣服80", "喝咖啡15.50", "makan nasi 12 ringgit").
+Understand Chinese number words (e.g. 二十五块 -> 25, 五十 -> 50, 十五块半 -> 15.50, 块/令吉/扣 -> default currency).
+
 Extract and return ONLY a JSON object conforming to this schema:
 {
   "amount": number (positive float, e.g. 15.50),
   "type": "EXPENSE" or "INCOME",
   "category": string (must be one of the available categories that best fits),
-  "description": string (short clean summary of what it was, e.g. "Starbucks Coffee", "Salary", "Gasoline"),
-  "currency": string (e.g. "USD", "MYR", "SGD", "EUR"),
-  "date": string (ISO YYYY-MM-DD format. If user says 'yesterday', calculate relative to current date. Default to ${today}),
+  "description": string (short clean summary of what it was, e.g. "Starbucks Coffee", "Salary", "Gasoline", "Lunch / 午餐"),
+  "currency": string (e.g. "USD", "MYR", "SGD", "EUR", "CNY"),
+  "date": string (ISO YYYY-MM-DD format. If user says 'yesterday' or '昨天', calculate relative to current date. Default to ${today}),
   "confidence": number (float between 0 and 1)
 }`;
 
@@ -161,9 +164,12 @@ Current Date: ${today}
 Default Currency: ${defaultCurrency}
 Available Categories: ${STANDARD_CATEGORIES.join(", ")}
 
+Language Support: The user may speak in Mandarin Chinese (中文 / 华语), Cantonese, English, Malay, or mixed slang (e.g. "吃午餐花了二十五块", "打油五十块", "买衣服八十块", "今天喝咖啡十五块半", "makan nasi 12 ringgit").
+Convert spoken Chinese numbers (e.g. 二十五 -> 25, 五十 -> 50, 一百 -> 100, 十五块半 -> 15.50, 块/令吉 -> currency) into standard numerical amount.
+
 Extract and return ONLY a JSON object:
 {
-  "transcript": string (verbatim speech transcription of what the user said),
+  "transcript": string (verbatim speech transcription of what the user said in the language they spoke),
   "amount": number (positive float, e.g. 24.50),
   "type": "EXPENSE" or "INCOME",
   "category": string (one of the available categories),

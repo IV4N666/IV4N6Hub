@@ -360,11 +360,11 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
 
   const quickSamples = [
     "🍔 Lunch with colleagues 18.50",
-    "⛽ Petrol 50 at Shell station",
+    "🍜 吃午餐花了 15 块半 (Food & Dining)",
+    "⛽ 打油 50 块 (Shell Petrol)",
+    "☕ 喝 Starbucks 咖啡 16 块",
     "🛒 Grocery shopping 92.40",
-    "☕ Starbucks iced latte 16.50",
-    "💡 Electricity bill 145",
-    "💰 Received salary 4500",
+    "💰 收到薪水 4500 (Salary Income)",
   ];
 
   return (
