@@ -50,6 +50,19 @@ export function getTodayDateString(timeZone = "Asia/Kuala_Lumpur"): string {
   }
 }
 
+export function cleanJsonText(raw: string): string {
+  let cleaned = (raw || "").trim();
+  if (cleaned.startsWith("```json")) {
+    cleaned = cleaned.substring(7);
+  } else if (cleaned.startsWith("```")) {
+    cleaned = cleaned.substring(3);
+  }
+  if (cleaned.endsWith("```")) {
+    cleaned = cleaned.substring(0, cleaned.length - 3);
+  }
+  return cleaned.trim();
+}
+
 export async function parseTextWithAI(
   text: string,
   userApiKey?: string,
@@ -88,7 +101,7 @@ Extract and return ONLY a JSON object conforming to this schema:
 }`;
 
       const result = await model.generateContent(prompt);
-      const responseText = result.response.text();
+      const responseText = cleanJsonText(result.response.text());
       const parsed = JSON.parse(responseText);
 
       return {
@@ -124,11 +137,11 @@ export async function parseAudioWithAI(
       amount: 0,
       type: "EXPENSE",
       category: "Other",
-      description: "Audio received (Add GEMINI_API_KEY to enable speech-to-text AI extraction)",
+      description: "Audio received (Add GEMINI_API_KEY in AI Settings to enable voice transcription)",
       currency: defaultCurrency,
       date: getTodayDateString(),
       confidence: 0.1,
-      transcript: "[Audio transcription requires Gemini API Key]",
+      transcript: "[Speech transcription requires Gemini API Key]",
     };
   }
 
@@ -161,15 +174,16 @@ Extract and return ONLY a JSON object:
 }
 `;
 
+    const cleanMime = (mimeType || "audio/webm").split(";")[0].trim();
     const audioPart = {
       inlineData: {
         data: audioBase64,
-        mimeType: mimeType || "audio/ogg",
+        mimeType: cleanMime,
       },
     };
 
     const result = await model.generateContent([prompt, audioPart]);
-    const responseText = result.response.text();
+    const responseText = cleanJsonText(result.response.text());
     const parsed = JSON.parse(responseText);
 
     return {
@@ -184,12 +198,11 @@ Extract and return ONLY a JSON object:
       confidence: Number(parsed.confidence) || 0.9,
       transcript: parsed.transcript || "",
     };
-  } catch (err) {
+  } catch (err: any) {
     console.error("Gemini Audio error:", err);
-    throw new Error("Failed to process voice note with AI.");
+    throw new Error(`Failed to process voice note with AI: ${err.message || err}`);
   }
 }
-
 // Vision OCR Receipt & Invoice Scanner
 export async function parseReceiptImageWithAI(
   imageBase64: string,
@@ -237,15 +250,16 @@ Extract and return ONLY a JSON object:
   "notes": string (brief description of the transaction)
 }`;
 
+  const cleanMime = (mimeType || "image/jpeg").split(";")[0].trim();
   const imagePart = {
     inlineData: {
       data: imageBase64,
-      mimeType: mimeType || "image/jpeg",
+      mimeType: cleanMime,
     },
   };
 
   const result = await model.generateContent([prompt, imagePart]);
-  const responseText = result.response.text();
+  const responseText = cleanJsonText(result.response.text());
   const parsed = JSON.parse(responseText);
 
   return {
@@ -303,7 +317,8 @@ Return ONLY JSON:
 }`;
 
       const result = await model.generateContent(prompt);
-      const parsed = JSON.parse(result.response.text());
+      const responseText = cleanJsonText(result.response.text());
+      const parsed = JSON.parse(responseText);
       return parsed;
     } catch (err) {
       console.warn("Smart intent API error, fallback:", err);
