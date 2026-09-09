@@ -224,10 +224,18 @@ export async function generateContentWithFallback(
   throw detailedError;
 }
 
+export interface SmartAccountInfo {
+  id: string;
+  name: string;
+  type?: string;
+}
+
 export async function parseTextWithAI(
   text: string,
   userApiKey?: string,
-  defaultCurrency = "MYR"
+  defaultCurrency = "MYR",
+  accounts: SmartAccountInfo[] = [],
+  conversationHistory: Array<{ role: "user" | "assistant"; text: string }> = []
 ): Promise<AIParsedExpense> {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
 
@@ -235,25 +243,87 @@ export async function parseTextWithAI(
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
       const today = getTodayDateString();
-      const prompt = `You are a financial assistant for an expense tracker. 
-Analyze this user text input: "${text}"
+
+      const accountListStr =
+        accounts.length > 0
+          ? accounts.map((a) => `- ID: "${a.id}", Name: "${a.name}" (Type: ${a.type || "ACCOUNT"})`).join("\n")
+          : "None configured";
+
+      const historyStr =
+        conversationHistory.length > 0
+          ? conversationHistory
+              .slice(-6)
+              .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+              .join("\n")
+          : "None";
+
+      const prompt = `You are the intelligent omni-assistant for IV4N6Hub, a personal financial ledger, to-do, and memo manager.
+User message: "${text}"
 Current Date reference: ${today}
 Default Currency: ${defaultCurrency}
 
-Available Categories: ${STANDARD_CATEGORIES.join(", ")}
+Available User Financial Accounts:
+${accountListStr}
 
-Language Support: The user may write in Mandarin Chinese (中文 / 华语), Cantonese, English, Malay, or mixed multilingual slang (e.g. "吃午餐25块", "打油50块", "买衣服80", "喝咖啡15.50", "makan nasi 12 ringgit").
-Understand Chinese number words (e.g. 二十五块 -> 25, 五十 -> 50, 十五块半 -> 15.50, 块/令吉/扣 -> default currency).
+Recent Conversation History:
+${historyStr}
 
-Extract and return ONLY a JSON object conforming to this schema:
+Available Financial Categories:
+${STANDARD_CATEGORIES.join(", ")}
+
+Analyze the user's intent and classify into one of the following:
+1. "EXPENSE" / "INCOME" / "TRANSFER":
+   - Logging money spent or received.
+   - Extract: amount (number), category (best match), description (concise item/merchant), currency, date (ISO YYYY-MM-DD), and accountId matching one from the Available Accounts if the user mentioned it (e.g. "Cash", "现金", "Maybank", "Bank", "Touch n Go", "TnG", "Credit Card", "刷卡"). If no account was mentioned, leave accountId as null.
+   - Multi-turn understanding: If the Conversation History shows the assistant previously asked for the amount or account (e.g. "How much was lunch?"), combine the previous context with the user's current reply to complete the record!
+   - Language support: Mandarin Chinese (吃午餐25块 / 喝咖啡15.50 / 打油50 / 现金付了30), Cantonese, Malay (makan 12 ringgit), English. Convert spoken/written Chinese numerals (十五块半 -> 15.50, 二十五 -> 25).
+   - Generate a friendly replyMessage (e.g. "✅ 已记录午餐支出 RM 25.00 (现金钱包)" or "✅ Recorded $15.50 for Coffee.").
+
+2. "CLARIFICATION":
+   - The user clearly mentions a spending, purchase, or activity that costs money (e.g. "吃了火锅", "went to Starbucks", "bought new shoes", "paid parking", "吃午餐") BUT DID NOT specify an amount or price.
+   - Do NOT guess an amount of 0. Instead, set intent to "CLARIFICATION", isMissingDetails to true, missingFields to ["amount"].
+   - In replyMessage, generate a warm, polite question in the user's language asking how much it cost and which account was used (e.g. "午餐吃得很丰盛吧！🍽️ 请问一共消费了多少钱？是用现金还是银行卡支付的呢？").
+
+3. "TODO":
+   - A task, action item, or reminder to be done later.
+   - Examples: "提醒我明天下午3点买菜", "Remember to renew road tax next week", "Todo: send monthly tax file", "记得周五交水电费".
+   - Extract: todoTitle, todoDueDate (ISO YYYY-MM-DD or null), todoPriority ("HIGH" | "MEDIUM" | "LOW").
+   - Set replyMessage: concise confirmation (e.g. "📋 已为您添加待办任务：**买菜** (截止日期: 2026-09-10)！").
+
+4. "NOTE":
+   - A quick thought, idea, password, memo, or reference note.
+   - Examples: "记一下：门禁密码是8899", "Note: wifi password is ...", "备忘录：关于下周旅行的行李清单...".
+   - Extract: noteTitle, noteContent, noteCategory ("Personal" | "Work" | "Idea" | "General").
+   - Set replyMessage: concise confirmation (e.g. "📝 已保存便签：**门禁密码** 到灵感备忘录！").
+
+5. "CANCEL":
+   - The user wants to cancel, delete, or undo a recently recorded transaction, to-do task, or note.
+   - Examples: "cancel", "undo", "cancel last spend", "cancel my expense", "delete that note", "cancel todo", "取消", "撤销", "取消刚刚那笔", "删除刚才的便签", "不用记了", "删除刚才的待办".
+   - Extract cancelTarget: "TRANSACTION" | "TODO" | "NOTE" | "LAST".
+   - Set replyMessage: e.g. "🚫 正在为您取消最近的记录..."
+
+Return ONLY a valid JSON conforming to this schema:
 {
-  "amount": number (positive float, e.g. 15.50),
-  "type": "EXPENSE" or "INCOME",
-  "category": string (must be one of the available categories that best fits),
-  "description": string (short clean summary of what it was, e.g. "Starbucks Coffee", "Salary", "Gasoline", "Lunch / 午餐"),
-  "currency": string (e.g. "USD", "MYR", "SGD", "EUR", "CNY"),
-  "date": string (ISO YYYY-MM-DD format. If user says 'yesterday' or '昨天', calculate relative to current date. Default to ${today}),
-  "confidence": number (float between 0 and 1)
+  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL",
+  "cancelTarget": "TRANSACTION" | "TODO" | "NOTE" | "LAST" or null,
+  "amount": number (positive float, 0 if not an expense or if missing),
+  "type": "EXPENSE" | "INCOME" | "TRANSFER",
+  "category": string,
+  "description": string,
+  "currency": string,
+  "date": string,
+  "accountId": string or null,
+  "accountName": string or null,
+  "todoTitle": string or null,
+  "todoDueDate": string or null,
+  "todoPriority": "HIGH" | "MEDIUM" | "LOW" or null,
+  "noteTitle": string or null,
+  "noteContent": string or null,
+  "noteCategory": string or null,
+  "isMissingDetails": boolean,
+  "missingFields": string[],
+  "replyMessage": string,
+  "confidence": number
 }`;
 
       const result = await generateContentWithFallback(genAI, apiKey, prompt, {
@@ -263,16 +333,39 @@ Extract and return ONLY a JSON object conforming to this schema:
       const responseText = cleanJsonText(result.response.text());
       const parsed = JSON.parse(responseText);
 
+      // Verify accountId against provided accounts list
+      let matchedAccountId = parsed.accountId || null;
+      let matchedAccountName = parsed.accountName || null;
+      if (matchedAccountId) {
+        const found = accounts.find((a) => a.id === matchedAccountId);
+        if (found) {
+          matchedAccountName = found.name;
+        } else {
+          matchedAccountId = null;
+        }
+      }
+
       return {
         amount: Math.abs(Number(parsed.amount) || 0),
-        type: parsed.type === "INCOME" ? "INCOME" : "EXPENSE",
-        category: STANDARD_CATEGORIES.includes(parsed.category)
-          ? parsed.category
-          : "Other",
+        type: parsed.type === "INCOME" ? "INCOME" : parsed.type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
+        category: STANDARD_CATEGORIES.includes(parsed.category) ? parsed.category : "Other",
         description: parsed.description || text,
         currency: parsed.currency || defaultCurrency,
         date: parsed.date || today,
         confidence: Number(parsed.confidence) || 0.95,
+        accountId: matchedAccountId,
+        accountName: matchedAccountName,
+        intent: parsed.intent || (Number(parsed.amount) > 0 ? "EXPENSE" : "CLARIFICATION"),
+        cancelTarget: parsed.cancelTarget || (parsed.intent === "CANCEL" ? "LAST" : undefined),
+        todoTitle: parsed.todoTitle || undefined,
+        todoDueDate: parsed.todoDueDate || undefined,
+        todoPriority: parsed.todoPriority || undefined,
+        noteTitle: parsed.noteTitle || undefined,
+        noteContent: parsed.noteContent || undefined,
+        noteCategory: parsed.noteCategory || undefined,
+        isMissingDetails: Boolean(parsed.isMissingDetails),
+        missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields : [],
+        replyMessage: parsed.replyMessage || (parsed.intent === "TODO" ? `📋 已记录待办：${parsed.todoTitle || text}` : `✅ 已记录 ${parsed.description || text}`),
       };
     } catch (err) {
       console.warn("Gemini API call failed, falling back to heuristic parser:", err);
@@ -280,14 +373,16 @@ Extract and return ONLY a JSON object conforming to this schema:
   }
 
   // Fallback Rule-Based Parser
-  return fallbackHeuristicParser(text, defaultCurrency);
+  return fallbackHeuristicParser(text, defaultCurrency, accounts);
 }
 
 export async function parseAudioWithAI(
   audioBase64: string,
   mimeType: string,
   userApiKey?: string,
-  defaultCurrency = "USD"
+  defaultCurrency = "USD",
+  accounts: SmartAccountInfo[] = [],
+  conversationHistory: Array<{ role: "user" | "assistant"; text: string }> = []
 ): Promise<AIParsedExpense & { transcript?: string }> {
   const apiKey = userApiKey || process.env.GEMINI_API_KEY;
 
@@ -301,32 +396,78 @@ export async function parseAudioWithAI(
       date: getTodayDateString(),
       confidence: 0.1,
       transcript: "[Speech transcription requires Gemini API Key]",
+      replyMessage: "请在设置中配置 Gemini API Key 以启用智能语音识别与分类。",
+      intent: "CLARIFICATION",
     };
   }
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
     const today = getTodayDateString();
-    const prompt = `Listen to this user's voice message regarding a financial transaction or expense/income.
+
+    const accountListStr =
+      accounts.length > 0
+        ? accounts.map((a) => `- ID: "${a.id}", Name: "${a.name}" (${a.type || "ACCOUNT"})`).join("\n")
+        : "None configured";
+
+    const historyStr =
+      conversationHistory.length > 0
+        ? conversationHistory
+            .slice(-6)
+            .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.text}`)
+            .join("\n")
+        : "None";
+
+    const prompt = `Listen to this user's voice message.
 Current Date: ${today}
 Default Currency: ${defaultCurrency}
-Available Categories: ${STANDARD_CATEGORIES.join(", ")}
 
-Language Support: The user may speak in Mandarin Chinese (中文 / 华语), Cantonese, English, Malay, or mixed slang (e.g. "吃午餐花了二十五块", "打油五十块", "买衣服八十块", "今天喝咖啡十五块半", "makan nasi 12 ringgit").
-Convert spoken Chinese numbers (e.g. 二十五 -> 25, 五十 -> 50, 一百 -> 100, 十五块半 -> 15.50, 块/令吉 -> currency) into standard numerical amount.
+Available User Accounts:
+${accountListStr}
+
+Recent Conversation History:
+${historyStr}
+
+Available Categories:
+${STANDARD_CATEGORIES.join(", ")}
+
+Analyze the spoken audio and classify user intent:
+1. "EXPENSE" / "INCOME" / "TRANSFER":
+   - Spoken transaction. Convert spoken numbers (二十五 -> 25, 五十 -> 50, 一百 -> 100, 十五块半 -> 15.50, 块/令吉 -> currency).
+   - Match spoken payment account against Available Accounts if mentioned (e.g. 现金, Maybank, 银行卡, touch n go).
+2. "CLARIFICATION":
+   - User spoke about buying or eating something, but did not say any price. Ask follow-up question.
+3. "TODO":
+   - User asks to be reminded of something or records a task (e.g. 提醒我明天买菜).
+4. "NOTE":
+   - User dictates a note or memo (e.g. 记一下密码是...).
+5. "CANCEL":
+   - User speaks to cancel, delete, or undo a recent spend, task, or note (e.g. 取消刚刚的记账, 撤销, 删掉刚才的便签, cancel that).
 
 Extract and return ONLY a JSON object:
 {
-  "transcript": string (verbatim speech transcription of what the user said in the language they spoke),
-  "amount": number (positive float, e.g. 24.50),
-  "type": "EXPENSE" or "INCOME",
-  "category": string (one of the available categories),
-  "description": string (short clean merchant/item description),
+  "transcript": string (verbatim speech transcription in original language),
+  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL",
+  "cancelTarget": "TRANSACTION" | "TODO" | "NOTE" | "LAST" or null,
+  "amount": number (0 if missing or not an expense),
+  "type": "EXPENSE" | "INCOME" | "TRANSFER",
+  "category": string,
+  "description": string,
   "currency": string,
-  "date": string (ISO YYYY-MM-DD format),
+  "date": string,
+  "accountId": string or null,
+  "accountName": string or null,
+  "todoTitle": string or null,
+  "todoDueDate": string or null,
+  "todoPriority": "HIGH" | "MEDIUM" | "LOW" or null,
+  "noteTitle": string or null,
+  "noteContent": string or null,
+  "noteCategory": string or null,
+  "isMissingDetails": boolean,
+  "missingFields": string[],
+  "replyMessage": string,
   "confidence": number
-}
-`;
+}`;
 
     const cleanMime = (mimeType || "audio/webm").split(";")[0].trim();
     const audioPart = {
@@ -343,17 +484,39 @@ Extract and return ONLY a JSON object:
     const responseText = cleanJsonText(result.response.text());
     const parsed = JSON.parse(responseText);
 
+    let matchedAccountId = parsed.accountId || null;
+    let matchedAccountName = parsed.accountName || null;
+    if (matchedAccountId) {
+      const found = accounts.find((a) => a.id === matchedAccountId);
+      if (found) {
+        matchedAccountName = found.name;
+      } else {
+        matchedAccountId = null;
+      }
+    }
+
     return {
       amount: Math.abs(Number(parsed.amount) || 0),
-      type: parsed.type === "INCOME" ? "INCOME" : "EXPENSE",
-      category: STANDARD_CATEGORIES.includes(parsed.category)
-        ? parsed.category
-        : "Other",
-      description: parsed.description || parsed.transcript || "Voice expense",
+      type: parsed.type === "INCOME" ? "INCOME" : parsed.type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
+      category: STANDARD_CATEGORIES.includes(parsed.category) ? parsed.category : "Other",
+      description: parsed.description || parsed.transcript || "Voice input",
       currency: parsed.currency || defaultCurrency,
       date: parsed.date || today,
       confidence: Number(parsed.confidence) || 0.9,
       transcript: parsed.transcript || "",
+      accountId: matchedAccountId,
+      accountName: matchedAccountName,
+      intent: parsed.intent || (Number(parsed.amount) > 0 ? "EXPENSE" : "CLARIFICATION"),
+      cancelTarget: parsed.cancelTarget || (parsed.intent === "CANCEL" ? "LAST" : undefined),
+      todoTitle: parsed.todoTitle || undefined,
+      todoDueDate: parsed.todoDueDate || undefined,
+      todoPriority: parsed.todoPriority || undefined,
+      noteTitle: parsed.noteTitle || undefined,
+      noteContent: parsed.noteContent || undefined,
+      noteCategory: parsed.noteCategory || undefined,
+      isMissingDetails: Boolean(parsed.isMissingDetails),
+      missingFields: Array.isArray(parsed.missingFields) ? parsed.missingFields : [],
+      replyMessage: parsed.replyMessage || (parsed.transcript ? `🎙️ 听取内容: "${parsed.transcript}"` : "已处理语音。"),
     };
   } catch (err: any) {
     console.error("Gemini Audio error:", err);
@@ -503,9 +666,156 @@ Return ONLY JSON:
   };
 }
 
-function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParsedExpense {
+function fallbackHeuristicParser(
+  text: string,
+  defaultCurrency: string,
+  accounts: SmartAccountInfo[] = []
+): AIParsedExpense {
   const lower = text.toLowerCase();
   const today = getTodayDateString();
+
+  // 0. Check Cancel / Undo Intent
+  if (
+    lower.includes("cancel") ||
+    lower.includes("undo") ||
+    lower.includes("delete last") ||
+    text.includes("取消") ||
+    text.includes("撤销") ||
+    text.includes("删掉刚才") ||
+    text.includes("不要记") ||
+    text.includes("不用记")
+  ) {
+    let target: "TRANSACTION" | "TODO" | "NOTE" | "LAST" = "LAST";
+    if (lower.includes("todo") || lower.includes("task") || text.includes("待办") || text.includes("任务")) {
+      target = "TODO";
+    } else if (lower.includes("note") || text.includes("便签") || text.includes("备忘")) {
+      target = "NOTE";
+    } else if (lower.includes("spend") || lower.includes("expense") || text.includes("消费") || text.includes("支出") || text.includes("账单")) {
+      target = "TRANSACTION";
+    }
+    return {
+      intent: "CANCEL",
+      cancelTarget: target,
+      amount: 0,
+      type: "EXPENSE",
+      category: "Other",
+      description: text,
+      currency: defaultCurrency,
+      date: today,
+      confidence: 0.9,
+      replyMessage: "正在撤销最近记录...",
+    };
+  }
+
+  // 1. Check Todo Intent
+  if (
+    lower.includes("remind") ||
+    lower.includes("todo") ||
+    lower.includes("task") ||
+    lower.includes("remember to") ||
+    text.includes("提醒") ||
+    text.includes("记得") ||
+    text.includes("待办")
+  ) {
+    const cleanTitle = text
+      .replace(/^(提醒我|记得|待办[:：]?|remind me to|remember to|todo[:：]?)\s*/i, "")
+      .trim();
+    return {
+      intent: "TODO",
+      amount: 0,
+      type: "EXPENSE",
+      category: "Other",
+      description: text,
+      currency: defaultCurrency,
+      date: today,
+      confidence: 0.85,
+      todoTitle: cleanTitle || text,
+      todoPriority: lower.includes("urgent") || text.includes("紧急") || text.includes("重要") ? "HIGH" : "MEDIUM",
+      replyMessage: `📋 已记录待办任务：“${cleanTitle || text}”`,
+    };
+  }
+
+  // 2. Check Note Intent
+  if (
+    lower.startsWith("note") ||
+    text.startsWith("便签") ||
+    text.startsWith("记一下") ||
+    text.startsWith("备忘") ||
+    lower.includes("password") ||
+    text.includes("密码")
+  ) {
+    const cleanNote = text
+      .replace(/^(note[:：]?|便签[:：]?|记一下[:：]?|备忘[:：]?)\s*/i, "")
+      .trim();
+    return {
+      intent: "NOTE",
+      amount: 0,
+      type: "EXPENSE",
+      category: "Other",
+      description: text,
+      currency: defaultCurrency,
+      date: today,
+      confidence: 0.85,
+      noteTitle: cleanNote.substring(0, 25),
+      noteContent: cleanNote || text,
+      noteCategory: "General",
+      replyMessage: `📝 已保存便签：“${cleanNote.substring(0, 25)}”`,
+    };
+  }
+
+  // 3. Amount extraction
+  const amountMatch = text.match(/[$€£¥]?\s*(\d+(?:[.,]\d{1,2})?)\s*(?:rm|myr|usd|sgd|bucks|dollars|ringgit|块|元)?/i);
+  let amount = 0;
+  if (amountMatch && amountMatch[1]) {
+    amount = parseFloat(amountMatch[1].replace(",", "."));
+  }
+
+  // Check matched account
+  let matchedAccountId: string | null = null;
+  let matchedAccountName: string | null = null;
+  for (const acc of accounts) {
+    const accLower = acc.name.toLowerCase();
+    if (
+      lower.includes(accLower) ||
+      (accLower.includes("cash") && (lower.includes("cash") || text.includes("现金"))) ||
+      (accLower.includes("maybank") && lower.includes("maybank")) ||
+      (accLower.includes("touch") && (lower.includes("tng") || lower.includes("touch") || text.includes("一触即通"))) ||
+      (accLower.includes("card") && (lower.includes("card") || text.includes("卡") || text.includes("信用卡")))
+    ) {
+      matchedAccountId = acc.id;
+      matchedAccountName = acc.name;
+      break;
+    }
+  }
+
+  // Missing amount check for spending intention
+  const isSpendingMention =
+    lower.includes("eat") ||
+    lower.includes("lunch") ||
+    lower.includes("dinner") ||
+    lower.includes("buy") ||
+    lower.includes("bought") ||
+    lower.includes("spent") ||
+    lower.includes("paid") ||
+    text.includes("吃") ||
+    text.includes("买") ||
+    text.includes("花了");
+
+  if (amount === 0 && isSpendingMention) {
+    return {
+      intent: "CLARIFICATION",
+      amount: 0,
+      type: "EXPENSE",
+      category: "Food & Dining",
+      description: text,
+      currency: defaultCurrency,
+      date: today,
+      confidence: 0.7,
+      isMissingDetails: true,
+      missingFields: ["amount"],
+      replyMessage: `请问一共消费了多少钱呢？请告诉我具体金额以及付款账户（如现金或银行卡）。`,
+    };
+  }
 
   const isIncome =
     lower.includes("salary") ||
@@ -514,20 +824,17 @@ function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParse
     lower.includes("earned") ||
     lower.includes("dividend") ||
     lower.includes("bonus") ||
-    lower.includes("cashback");
+    lower.includes("cashback") ||
+    text.includes("工资") ||
+    text.includes("薪水") ||
+    text.includes("收入");
 
   let currency = defaultCurrency;
-  if (lower.includes("rm") || lower.includes("myr") || lower.includes("ringgit")) currency = "MYR";
+  if (lower.includes("rm") || lower.includes("myr") || lower.includes("ringgit") || text.includes("令吉")) currency = "MYR";
   else if (lower.includes("sgd") || lower.includes("s$")) currency = "SGD";
   else if (lower.includes("eur") || lower.includes("€")) currency = "EUR";
   else if (lower.includes("gbp") || lower.includes("£")) currency = "GBP";
   else if (lower.includes("usd") || lower.includes("$")) currency = "USD";
-
-  const amountMatch = text.match(/[$€£¥]?\s*(\d+(?:[.,]\d{1,2})?)\s*(?:rm|myr|usd|sgd|bucks|dollars|ringgit)?/i);
-  let amount = 0;
-  if (amountMatch && amountMatch[1]) {
-    amount = parseFloat(amountMatch[1].replace(",", "."));
-  }
 
   let category = "Other";
   if (isIncome) {
@@ -542,7 +849,10 @@ function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParse
     lower.includes("mcdonald") ||
     lower.includes("restaurant") ||
     lower.includes("eat") ||
-    lower.includes("cafe")
+    lower.includes("cafe") ||
+    text.includes("吃") ||
+    text.includes("餐") ||
+    text.includes("咖啡")
   ) {
     category = "Food & Dining";
   } else if (
@@ -556,7 +866,10 @@ function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParse
     lower.includes("toll") ||
     lower.includes("train") ||
     lower.includes("mrt") ||
-    lower.includes("bus")
+    lower.includes("bus") ||
+    text.includes("打油") ||
+    text.includes("加油") ||
+    text.includes("车费")
   ) {
     category = "Transport & Fuel";
   } else if (
@@ -568,7 +881,10 @@ function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParse
     lower.includes("shoes") ||
     lower.includes("amazon") ||
     lower.includes("shopee") ||
-    lower.includes("lazada")
+    lower.includes("lazada") ||
+    text.includes("买衣服") ||
+    text.includes("超市") ||
+    text.includes("购物")
   ) {
     category = "Shopping & Groceries";
   } else if (
@@ -581,7 +897,10 @@ function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParse
     lower.includes("utility") ||
     lower.includes("subscription") ||
     lower.includes("netflix") ||
-    lower.includes("spotify")
+    lower.includes("spotify") ||
+    text.includes("水电") ||
+    text.includes("话费") ||
+    text.includes("账单")
   ) {
     category = "Bills & Utilities";
   }
@@ -590,6 +909,7 @@ function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParse
   if (desc.length > 50) desc = desc.substring(0, 47) + "...";
 
   return {
+    intent: isIncome ? "INCOME" : "EXPENSE",
     amount,
     type: isIncome ? "INCOME" : "EXPENSE",
     category,
@@ -597,5 +917,10 @@ function fallbackHeuristicParser(text: string, defaultCurrency: string): AIParse
     currency,
     date: today,
     confidence: 0.8,
+    accountId: matchedAccountId,
+    accountName: matchedAccountName,
+    replyMessage: amount > 0
+      ? `✅ 已记录 ${currency} ${amount.toFixed(2)} (${category})${matchedAccountName ? `，付款账户: ${matchedAccountName}` : ""}`
+      : "未检测到明确金额或内容。",
   };
 }

@@ -138,6 +138,50 @@ export interface PlatformModule {
   badge?: string;
 }
 
+export type SmartIntentType =
+  | "EXPENSE"
+  | "INCOME"
+  | "TRANSFER"
+  | "TODO"
+  | "NOTE"
+  | "CLARIFICATION"
+  | "CANCEL";
+
+export interface ConversationMessage {
+  role: "user" | "assistant";
+  text: string;
+}
+
+export interface SmartAIParseResult {
+  intent: SmartIntentType;
+  amount: number;
+  type: TransactionType;
+  category: string;
+  description: string;
+  currency: string;
+  date?: string;
+  accountId?: string | null;
+  accountName?: string | null;
+  toAccountId?: string | null;
+  toAccountName?: string | null;
+  confidence: number;
+  // Todo specific
+  todoTitle?: string;
+  todoDueDate?: string | null;
+  todoPriority?: "HIGH" | "MEDIUM" | "LOW";
+  // Note specific
+  noteTitle?: string;
+  noteContent?: string;
+  noteCategory?: string;
+  // Cancellation specific
+  cancelTarget?: "TRANSACTION" | "TODO" | "NOTE" | "LAST";
+  // Clarification / Conversational
+  isMissingDetails?: boolean;
+  missingFields?: string[];
+  replyMessage: string;
+  transcript?: string;
+}
+
 export interface AIParsedExpense {
   amount: number;
   type: TransactionType;
@@ -147,4 +191,18 @@ export interface AIParsedExpense {
   date?: string;
   confidence: number;
   reasoning?: string;
+  accountId?: string | null;
+  accountName?: string | null;
+  replyMessage?: string;
+  intent?: SmartIntentType;
+  todoTitle?: string;
+  todoDueDate?: string | null;
+  todoPriority?: "HIGH" | "MEDIUM" | "LOW";
+  noteTitle?: string;
+  noteContent?: string;
+  noteCategory?: string;
+  cancelTarget?: "TRANSACTION" | "TODO" | "NOTE" | "LAST";
+  isMissingDetails?: boolean;
+  missingFields?: string[];
 }
+

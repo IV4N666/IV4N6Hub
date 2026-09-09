@@ -46,6 +46,7 @@ export default function TransactionsLedger() {
   const [editTags, setEditTags] = useState("");
   const [editDesc, setEditDesc] = useState("");
   const [editDate, setEditDate] = useState("");
+  const [editAccountId, setEditAccountId] = useState("");
 
   // Import / Export Modal
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
@@ -114,6 +115,7 @@ export default function TransactionsLedger() {
     setEditTags(tx.tags || "");
     setEditDesc(tx.description || "");
     setEditDate(format(new Date(tx.date), "yyyy-MM-dd"));
+    setEditAccountId(tx.accountId || "");
   };
 
   const handleSaveEdit = async () => {
@@ -129,6 +131,7 @@ export default function TransactionsLedger() {
           subCategory: editSubCategory || null,
           tags: editTags || null,
           description: editDesc,
+          accountId: editAccountId || null,
           date: editDate ? new Date(editDate).toISOString() : undefined,
         }),
       });
@@ -406,6 +409,19 @@ export default function TransactionsLedger() {
                               placeholder="Amount"
                               className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none font-mono"
                             />
+                            <select
+                              value={editAccountId}
+                              onChange={(e) => setEditAccountId(e.target.value)}
+                              title="Payment Account"
+                              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-cyan-300 focus:border-blue-500 focus:outline-none"
+                            >
+                              <option value="">💳 Unassigned Account</option>
+                              {accounts.map((acc) => (
+                                <option key={acc.id} value={acc.id}>
+                                  💳 {acc.name} ({acc.currency} {acc.balance.toFixed(2)})
+                                </option>
+                              ))}
+                            </select>
                             <input
                               type="text"
                               value={editTags}
@@ -441,9 +457,15 @@ export default function TransactionsLedger() {
                                   style={{ backgroundColor: meta.color }}
                                 />
                                 <span>{tx.category}</span>
-                                {tx.account && (
-                                  <span className="text-slate-300">
-                                    💳 {tx.account.name}
+                                {tx.account ? (
+                                  <span className="inline-flex items-center gap-1 rounded bg-slate-800/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-200 border border-slate-700/60">
+                                    <span>💳</span>
+                                    <span>{tx.account.name}</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-300 border border-amber-500/20">
+                                    <span>💳</span>
+                                    <span>Unassigned</span>
                                   </span>
                                 )}
                               </>

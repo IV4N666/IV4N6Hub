@@ -31,14 +31,24 @@ interface ChatMessage {
   type: "text" | "voice";
   text: string;
   transcript?: string;
+  intent?: string;
+  transactionId?: string;
+  todoId?: string;
+  noteId?: string;
   parsedData?: {
     amount: number;
     category: string;
     description: string;
     currency: string;
     type: string;
+    accountName?: string | null;
+    todoTitle?: string;
+    todoDueDate?: string | null;
+    todoPriority?: string;
+    noteTitle?: string;
+    noteContent?: string;
   };
-  uploadStatus?: "SAVED" | "NO_AMOUNT" | "ERROR";
+  uploadStatus?: "SAVED" | "NO_AMOUNT" | "ERROR" | "TODO_SAVED" | "NOTE_SAVED" | "CLARIFICATION" | "CANCELLED";
   timestamp: string;
 }
 
@@ -56,7 +66,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       id: "welcome-1",
       sender: "bot",
       type: "text",
-      text: "👋 Hi! I'm your IV4N6Hub Financial Assistant on WhatsApp.\n\nYou can speak a voice note or type an expense (e.g. 'Spent 25 on fuel' or 'Lunch 14.50'). Gemini AI will extract the amount, categorize it, and instantly upload it to your ledger!",
+      text: "👋 Hi! I'm your IV4N6Hub Financial & Life Assistant on WhatsApp.\n\nHere is what you can tell me:\n• 💰 Expense: 'Spent 25 on fuel with cash' or '吃了午餐25块'\n• 📋 Task: 'Remind me to buy groceries tomorrow' or '提醒我明天买菜'\n• 📝 Note: 'Note: door passcode is 8842' or '记一下：门禁密码是8842'\n• 💬 Missing details? Tell me what you did, and I'll follow up with questions!",
       uploadStatus: "SAVED",
       timestamp: "12:00 PM",
     },
@@ -74,6 +84,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   const [manualAmount, setManualAmount] = useState("");
   const [manualCategory, setManualCategory] = useState("Food & Dining");
   const [manualSaving, setManualSaving] = useState(false);
+  const [cancellingId, setCancellingId] = useState<string | null>(null);
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -193,13 +204,18 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       },
     ]);
 
+    const historyPayload = messages.slice(-6).map((m) => ({
+      role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+      text: m.transcript ? `${m.text} (${m.transcript})` : m.text,
+    }));
+
     try {
       const reader = new FileReader();
       reader.readAsDataURL(audioBlob);
       reader.onloadend = async () => {
         const base64Data = (reader.result as string).split(",")[1];
 
-        setProcessingStep("Extracting amount & uploading to database...");
+        setProcessingStep("Analyzing voice intent & details with Gemini AI...");
         const res = await fetch("/api/ai/parse", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -209,6 +225,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
             defaultCurrency: currency,
             autoSave: true,
             source: "WHATSAPP_VOICE",
+            conversationHistory: historyPayload,
           }),
         });
 
@@ -255,6 +272,11 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       },
     ]);
 
+    const historyPayload = messages.slice(-6).map((m) => ({
+      role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+      text: m.text,
+    }));
+
     try {
       const res = await fetch("/api/ai/parse", {
         method: "POST",
@@ -264,6 +286,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           defaultCurrency: currency,
           autoSave: true,
           source: "WHATSAPP_TEXT",
+          conversationHistory: historyPayload,
         }),
       });
 
@@ -286,24 +309,171 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     }
   };
 
+  const handleCancelItem = async (
+    msgId: string,
+    type: "TRANSACTION" | "TODO" | "NOTE",
+    targetId?: string
+  ) => {
+    if (!targetId || cancellingId) return;
+    setCancellingId(msgId);
+    try {
+      let url = "";
+      if (type === "TRANSACTION") url = `/api/finance/transactions?id=${targetId}`;
+      else if (type === "TODO") url = `/api/todos?id=${targetId}`;
+      else if (type === "NOTE") url = `/api/notes?id=${targetId}`;
+
+      const res = await fetch(url, { method: "DELETE" });
+      if (res.ok) {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === msgId
+              ? {
+                  ...m,
+                  uploadStatus: "CANCELLED",
+                  text:
+                    type === "TRANSACTION"
+                      ? `🚫 已撤销该笔支出并退回账户余额`
+                      : type === "TODO"
+                      ? `🚫 已撤销/删除该待办任务`
+                      : `🚫 已撤销/删除该灵感便签`,
+                }
+              : m
+          )
+        );
+        if (onExpenseLogged) onExpenseLogged();
+      } else {
+        alert("Failed to cancel item. Please check ledger or records.");
+      }
+    } catch (e) {
+      console.error("Cancellation error:", e);
+      alert("Error cancelling item");
+    } finally {
+      setCancellingId(null);
+    }
+  };
+
   const handleApiResponse = (data: any, timestamp: string) => {
     setIsProcessing(false);
     if (data.success && data.parsed) {
       const parsed = data.parsed;
 
-      if (parsed.amount > 0) {
+      // 0. Cancel / Undo Intent
+      if (data.intent === "CANCEL" || parsed.intent === "CANCEL") {
         setMessages((prev) => [
           ...prev,
           {
             id: String(Date.now() + 1),
             sender: "bot",
             type: "text",
-            text: `Recorded ${formatCurrency(
-              parsed.amount,
-              parsed.currency || currency
-            )} for ${parsed.category}`,
+            text: data.message || "🚫 已为您撤销相关记录。",
+            intent: "CANCEL",
             transcript: parsed.transcript,
-            parsedData: parsed,
+            uploadStatus: "CANCELLED",
+            timestamp,
+          },
+        ]);
+        if (onExpenseLogged) onExpenseLogged();
+      }
+      // 1. Task / Todo Intent
+      else if (data.intent === "TODO" || parsed.intent === "TODO") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text: data.message || `📋 已添加待办任务：“${parsed.todoTitle || "新任务"}”`,
+            intent: "TODO",
+            todoId: data.todo?.id,
+            transcript: parsed.transcript,
+            parsedData: {
+              amount: 0,
+              category: "Tasks",
+              description: parsed.todoTitle || "待办事项",
+              currency,
+              type: "TODO",
+              todoTitle: parsed.todoTitle,
+              todoDueDate: parsed.todoDueDate,
+              todoPriority: parsed.todoPriority,
+            },
+            uploadStatus: "TODO_SAVED",
+            timestamp,
+          },
+        ]);
+        if (onExpenseLogged) onExpenseLogged();
+      }
+      // 2. Note / Memo Intent
+      else if (data.intent === "NOTE" || parsed.intent === "NOTE") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text: data.message || `📝 已保存便签：“${parsed.noteTitle || "灵感便签"}”`,
+            intent: "NOTE",
+            noteId: data.note?.id,
+            transcript: parsed.transcript,
+            parsedData: {
+              amount: 0,
+              category: "Notes",
+              description: parsed.noteTitle || "便签内容",
+              currency,
+              type: "NOTE",
+              noteTitle: parsed.noteTitle,
+              noteContent: parsed.noteContent,
+            },
+            uploadStatus: "NOTE_SAVED",
+            timestamp,
+          },
+        ]);
+        if (onExpenseLogged) onExpenseLogged();
+      }
+      // 3. Clarification / Missing details
+      else if (
+        data.intent === "CLARIFICATION" ||
+        parsed.intent === "CLARIFICATION" ||
+        parsed.isMissingDetails
+      ) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text: data.message || "请问具体消费了多少金额呢？是用什么账户支付的？",
+            intent: "CLARIFICATION",
+            transcript: parsed.transcript,
+            uploadStatus: "CLARIFICATION",
+            timestamp,
+          },
+        ]);
+      }
+      // 4. Financial Transaction
+      else if (parsed.amount > 0) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text:
+              data.message ||
+              `Recorded ${formatCurrency(
+                parsed.amount,
+                parsed.currency || currency
+              )} for ${parsed.category}`,
+            transcript: parsed.transcript,
+            intent: parsed.type,
+            transactionId: data.transaction?.id,
+            parsedData: {
+              amount: parsed.amount,
+              category: parsed.category,
+              description: parsed.description,
+              currency: parsed.currency || currency,
+              type: parsed.type,
+              accountName: parsed.accountName,
+            },
             uploadStatus: "SAVED",
             timestamp,
           },
@@ -319,7 +489,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
             id: String(Date.now() + 1),
             sender: "bot",
             type: "text",
-            text: `Could not detect a numerical price in your input.`,
+            text: data.message || `Could not detect a numerical price in your input.`,
             transcript: parsed.transcript,
             parsedData: parsed,
             uploadStatus: "NO_AMOUNT",
@@ -405,12 +575,13 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   };
 
   const quickSamples = [
-    "🍔 Lunch with colleagues 18.50",
+    "🍔 Lunch with colleagues 18.50 with cash",
     "🍜 吃午餐花了 15 块半 (Food & Dining)",
-    "⛽ 打油 50 块 (Shell Petrol)",
-    "☕ 喝 Starbucks 咖啡 16 块",
-    "🛒 Grocery shopping 92.40",
-    "💰 收到薪水 4500 (Salary Income)",
+    "⛽ 用现金打油 50 块 (Shell Petrol)",
+    "📋 提醒我明天下午3点买菜 (Task)",
+    "📝 记一下：门禁密码是8842 (Note)",
+    "❓ 刚在超市买了点东西 (Missing details)",
+    "🚫 撤销刚刚那笔支出 (Cancel/Undo)",
   ];
 
   return (
@@ -506,6 +677,15 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                             {msg.parsedData.description}
                           </span>
                         </div>
+                        <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-800">
+                          <span className="text-slate-400 shrink-0">Payment Account</span>
+                          <span className="font-semibold text-slate-200 flex items-center gap-1 min-w-0 truncate text-right">
+                            <span>💳</span>
+                            <span className={msg.parsedData.accountName ? "text-cyan-300 truncate" : "text-amber-400/90 italic"}>
+                              {msg.parsedData.accountName || "Unassigned"}
+                            </span>
+                          </span>
+                        </div>
                       </div>
 
                       {msg.transcript && (
@@ -515,7 +695,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                         </div>
                       )}
 
-                      <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                      <div className="pt-1 flex items-center justify-between gap-2 flex-wrap border-t border-slate-800/60 mt-1">
                         <Link
                           href="/transactions"
                           className="text-[10px] font-bold text-cyan-400 hover:underline flex items-center gap-1 shrink-0"
@@ -523,7 +703,168 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                           <span>View in Ledger</span>
                           <ArrowUpRight className="h-3 w-3" />
                         </Link>
+                        {msg.transactionId && (
+                          <button
+                            onClick={() => handleCancelItem(msg.id, "TRANSACTION", msg.transactionId)}
+                            disabled={cancellingId === msg.id}
+                            className="flex items-center gap-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300 transition-colors cursor-pointer"
+                            title="Cancel this transaction and refund account"
+                          >
+                            <Trash2 className="h-2.5 w-2.5 text-rose-400" />
+                            <span>{cancellingId === msg.id ? "Refunding..." : "Cancel & Refund"}</span>
+                          </button>
+                        )}
                         <span className="text-[10px] text-slate-500 ml-auto">{msg.timestamp}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* If bot response with TODO SAVED */}
+                  {!isUser && msg.uploadStatus === "TODO_SAVED" && (
+                    <div className="space-y-2.5 min-w-0">
+                      <div className="flex items-center gap-1.5 rounded-lg bg-indigo-500/20 px-2.5 py-1 text-[11px] font-bold text-indigo-300 border border-indigo-500/30 flex-wrap">
+                        <span>📋</span>
+                        <span>TASK SAVED TO TO-DOS</span>
+                      </div>
+
+                      <div className="rounded-xl bg-black/40 p-3 border border-slate-700/60 space-y-2 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-[11px] text-slate-400 shrink-0">Action Item</span>
+                          <span className="font-bold text-white text-right break-words [overflow-wrap:anywhere] max-w-[70%]">
+                            {msg.parsedData?.todoTitle || msg.text}
+                          </span>
+                        </div>
+                        {msg.parsedData?.todoDueDate && (
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="text-slate-400 shrink-0">Due Date</span>
+                            <span className="font-semibold text-cyan-300 text-right">
+                              📅 {msg.parsedData.todoDueDate}
+                            </span>
+                          </div>
+                        )}
+                        {msg.parsedData?.todoPriority && (
+                          <div className="flex items-center justify-between gap-2 text-[11px]">
+                            <span className="text-slate-400 shrink-0">Priority</span>
+                            <span
+                              className={`font-bold px-2 py-0.5 rounded text-[10px] ${
+                                msg.parsedData.todoPriority === "HIGH"
+                                  ? "bg-rose-500/20 text-rose-300 border border-rose-500/30"
+                                  : msg.parsedData.todoPriority === "LOW"
+                                  ? "bg-slate-700 text-slate-300"
+                                  : "bg-amber-500/20 text-amber-300 border border-amber-500/30"
+                              }`}
+                            >
+                              {msg.parsedData.todoPriority}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {msg.transcript && (
+                        <div className="rounded-lg bg-slate-900/80 p-2 text-[10px] text-slate-400 italic border border-slate-800 break-words [overflow-wrap:anywhere]">
+                          <span className="text-indigo-400 not-italic font-semibold">Transcript: </span>
+                          &ldquo;{msg.transcript}&rdquo;
+                        </div>
+                      )}
+
+                      <div className="pt-1 flex items-center justify-between gap-2 flex-wrap border-t border-slate-800/60 mt-1">
+                        <Link
+                          href="/notes"
+                          className="text-[10px] font-bold text-indigo-400 hover:underline flex items-center gap-1 shrink-0"
+                        >
+                          <span>View in Tasks / Notes</span>
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                        {msg.todoId && (
+                          <button
+                            onClick={() => handleCancelItem(msg.id, "TODO", msg.todoId)}
+                            disabled={cancellingId === msg.id}
+                            className="flex items-center gap-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300 transition-colors cursor-pointer"
+                            title="Delete this task"
+                          >
+                            <Trash2 className="h-2.5 w-2.5 text-rose-400" />
+                            <span>{cancellingId === msg.id ? "Deleting..." : "Cancel Task"}</span>
+                          </button>
+                        )}
+                        <span className="text-[10px] text-slate-500 ml-auto">{msg.timestamp}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* If bot response with NOTE SAVED */}
+                  {!isUser && msg.uploadStatus === "NOTE_SAVED" && (
+                    <div className="space-y-2.5 min-w-0">
+                      <div className="flex items-center gap-1.5 rounded-lg bg-sky-500/20 px-2.5 py-1 text-[11px] font-bold text-sky-300 border border-sky-500/30 flex-wrap">
+                        <span>📝</span>
+                        <span>NOTE SAVED TO MEMOS</span>
+                      </div>
+
+                      <div className="rounded-xl bg-black/40 p-3 border border-slate-700/60 space-y-2 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <span className="text-[11px] text-slate-400 shrink-0">Title</span>
+                          <span className="font-bold text-white text-right break-words [overflow-wrap:anywhere] max-w-[70%]">
+                            {msg.parsedData?.noteTitle || "灵感便签"}
+                          </span>
+                        </div>
+                        {msg.parsedData?.noteContent && (
+                          <div className="rounded-lg bg-slate-900/60 p-2 text-[11px] text-slate-200 border border-slate-800 break-words [overflow-wrap:anywhere] whitespace-pre-wrap">
+                            {msg.parsedData.noteContent}
+                          </div>
+                        )}
+                      </div>
+
+                      {msg.transcript && (
+                        <div className="rounded-lg bg-slate-900/80 p-2 text-[10px] text-slate-400 italic border border-slate-800 break-words [overflow-wrap:anywhere]">
+                          <span className="text-sky-400 not-italic font-semibold">Transcript: </span>
+                          &ldquo;{msg.transcript}&rdquo;
+                        </div>
+                      )}
+
+                      <div className="pt-1 flex items-center justify-between gap-2 flex-wrap border-t border-slate-800/60 mt-1">
+                        <Link
+                          href="/notes"
+                          className="text-[10px] font-bold text-sky-400 hover:underline flex items-center gap-1 shrink-0"
+                        >
+                          <span>View in Notes</span>
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                        {msg.noteId && (
+                          <button
+                            onClick={() => handleCancelItem(msg.id, "NOTE", msg.noteId)}
+                            disabled={cancellingId === msg.id}
+                            className="flex items-center gap-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300 transition-colors cursor-pointer"
+                            title="Delete this note"
+                          >
+                            <Trash2 className="h-2.5 w-2.5 text-rose-400" />
+                            <span>{cancellingId === msg.id ? "Deleting..." : "Delete Note"}</span>
+                          </button>
+                        )}
+                        <span className="text-[10px] text-slate-500 ml-auto">{msg.timestamp}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* If bot response with CLARIFICATION */}
+                  {!isUser && msg.uploadStatus === "CLARIFICATION" && (
+                    <div className="space-y-2 min-w-0">
+                      <div className="flex items-center gap-1.5 rounded-lg bg-amber-500/20 px-2 py-0.5 text-[10px] font-bold text-amber-300 border border-amber-500/30 w-fit">
+                        <Sparkles className="h-3 w-3 text-amber-400" />
+                        <span>QUESTION / CLARIFICATION</span>
+                      </div>
+
+                      <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word] text-slate-100 text-xs">
+                        {msg.text}
+                      </p>
+
+                      {msg.transcript && (
+                        <div className="rounded-lg bg-slate-900/80 p-2 text-[10px] text-slate-400 italic border border-slate-800 break-words [overflow-wrap:anywhere]">
+                          <span className="text-amber-400 not-italic font-semibold">Heard: </span>
+                          &ldquo;{msg.transcript}&rdquo;
+                        </div>
+                      )}
+
+                      <div className="mt-1 flex items-center justify-end text-[10px] text-slate-400">
+                        <span>{msg.timestamp}</span>
                       </div>
                     </div>
                   )}
@@ -537,7 +878,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                       </div>
 
                       <p className="text-xs text-slate-300 leading-relaxed break-words [overflow-wrap:anywhere]">
-                        I heard what you said, but could not detect a numerical price or amount.
+                        {msg.text || "I heard what you said, but could not detect a numerical price or amount."}
                       </p>
 
                       {msg.transcript && (
@@ -560,15 +901,46 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                     </div>
                   )}
 
-                  {/* Standard initial bot messages */}
-                  {!isUser && msg.uploadStatus !== "SAVED" && msg.uploadStatus !== "NO_AMOUNT" && (
-                    <>
-                      <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.text}</p>
+                  {/* If bot response or item CANCELLED */}
+                  {!isUser && msg.uploadStatus === "CANCELLED" && (
+                    <div className="space-y-2 min-w-0">
+                      <div className="flex items-center gap-1.5 rounded-lg bg-rose-500/20 px-2.5 py-1 text-[10px] font-bold text-rose-300 border border-rose-500/30 w-fit">
+                        <X className="h-3 w-3 text-rose-400 shrink-0" />
+                        <span>RECORD CANCELLED / DELETED</span>
+                      </div>
+
+                      <p className="text-xs text-rose-200/90 leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word] line-through decoration-rose-500/60">
+                        {msg.text}
+                      </p>
+
+                      {msg.transcript && (
+                        <div className="rounded-lg bg-slate-900/80 p-2 text-[10px] text-slate-400 italic border border-slate-800 break-words [overflow-wrap:anywhere]">
+                          <span className="text-rose-400 not-italic font-semibold">Voice command: </span>
+                          &ldquo;{msg.transcript}&rdquo;
+                        </div>
+                      )}
+
                       <div className="mt-1 flex items-center justify-end text-[10px] text-slate-400">
                         <span>{msg.timestamp}</span>
                       </div>
-                    </>
+                    </div>
                   )}
+
+                  {/* Standard initial bot messages */}
+                  {!isUser &&
+                    msg.uploadStatus !== "SAVED" &&
+                    msg.uploadStatus !== "NO_AMOUNT" &&
+                    msg.uploadStatus !== "TODO_SAVED" &&
+                    msg.uploadStatus !== "NOTE_SAVED" &&
+                    msg.uploadStatus !== "CLARIFICATION" &&
+                    msg.uploadStatus !== "CANCELLED" && (
+                      <>
+                        <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.text}</p>
+                        <div className="mt-1 flex items-center justify-end text-[10px] text-slate-400">
+                          <span>{msg.timestamp}</span>
+                        </div>
+                      </>
+                    )}
                 </div>
               </div>
             );

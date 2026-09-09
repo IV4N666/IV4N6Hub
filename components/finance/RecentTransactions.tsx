@@ -156,10 +156,15 @@ export const RecentTransactions: React.FC<RecentTransactionsProps> = ({
                             className="h-2 w-2 rounded-full"
                             style={{ backgroundColor: meta.color }}
                           />
-                          <span>{tx.category}</span>
-                          {tx.account && (
-                            <span className="text-slate-400">
-                              💳 {tx.account.name}
+                          {tx.account ? (
+                            <span className="inline-flex items-center gap-1 rounded bg-slate-800/80 px-1.5 py-0.5 text-[10px] font-medium text-slate-300 border border-slate-700/60">
+                              <span>💳</span>
+                              <span>{tx.account.name}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[10px] font-medium text-amber-300 border border-amber-500/20">
+                              <span>💳</span>
+                              <span>Unassigned</span>
                             </span>
                           )}
                         </>

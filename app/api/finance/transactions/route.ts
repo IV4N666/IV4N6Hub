@@ -206,20 +206,91 @@ export async function PUT(request: NextRequest) {
       );
     }
 
+    const oldTx = await db.transaction.findUnique({ where: { id } });
+    if (!oldTx) {
+      return NextResponse.json(
+        { success: false, error: "Transaction not found" },
+        { status: 404 }
+      );
+    }
+
+    // 1. Revert previous balance impact
+    if (oldTx.type === "TRANSFER") {
+      if (oldTx.accountId) {
+        await db.account.update({
+          where: { id: oldTx.accountId },
+          data: { balance: { increment: oldTx.amount } },
+        }).catch(() => {});
+      }
+      if (oldTx.toAccountId) {
+        await db.account.update({
+          where: { id: oldTx.toAccountId },
+          data: { balance: { decrement: oldTx.amount } },
+        }).catch(() => {});
+      }
+    } else if (oldTx.type === "EXPENSE" && oldTx.accountId) {
+      await db.account.update({
+        where: { id: oldTx.accountId },
+        data: { balance: { increment: oldTx.amount } },
+      }).catch(() => {});
+    } else if (oldTx.type === "INCOME" && oldTx.accountId) {
+      await db.account.update({
+        where: { id: oldTx.accountId },
+        data: { balance: { decrement: oldTx.amount } },
+      }).catch(() => {});
+    }
+
+    // 2. Determine new values
+    const newAmount = amount !== undefined ? Math.abs(Number(amount)) : oldTx.amount;
+    const newType =
+      type !== undefined
+        ? type === "INCOME"
+          ? "INCOME"
+          : type === "TRANSFER"
+          ? "TRANSFER"
+          : "EXPENSE"
+        : oldTx.type;
+    const newAccountId = accountId !== undefined ? (accountId || null) : oldTx.accountId;
+    const newToAccountId = toAccountId !== undefined ? (toAccountId || null) : oldTx.toAccountId;
+
+    // 3. Apply new balance impact
+    if (newType === "TRANSFER") {
+      if (newAccountId) {
+        await db.account.update({
+          where: { id: newAccountId },
+          data: { balance: { decrement: newAmount } },
+        }).catch(() => {});
+      }
+      if (newToAccountId) {
+        await db.account.update({
+          where: { id: newToAccountId },
+          data: { balance: { increment: newAmount } },
+        }).catch(() => {});
+      }
+    } else if (newType === "EXPENSE" && newAccountId) {
+      await db.account.update({
+        where: { id: newAccountId },
+        data: { balance: { decrement: newAmount } },
+      }).catch(() => {});
+    } else if (newType === "INCOME" && newAccountId) {
+      await db.account.update({
+        where: { id: newAccountId },
+        data: { balance: { increment: newAmount } },
+      }).catch(() => {});
+    }
+
     const updated = await db.transaction.update({
       where: { id },
       data: {
-        ...(amount !== undefined && { amount: Math.abs(Number(amount)) }),
-        ...(type !== undefined && {
-          type: type === "INCOME" ? "INCOME" : type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
-        }),
+        ...(amount !== undefined && { amount: newAmount }),
+        ...(type !== undefined && { type: newType }),
         ...(category !== undefined && { category }),
         ...(subCategory !== undefined && { subCategory }),
         ...(tags !== undefined && { tags }),
         ...(description !== undefined && { description }),
         ...(currency !== undefined && { currency }),
-        ...(accountId !== undefined && { accountId: accountId || null }),
-        ...(toAccountId !== undefined && { toAccountId: toAccountId || null }),
+        accountId: newAccountId,
+        toAccountId: newToAccountId,
         ...(date !== undefined && { date: new Date(date) }),
       },
       include: {

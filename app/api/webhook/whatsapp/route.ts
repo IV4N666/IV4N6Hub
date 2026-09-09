@@ -70,13 +70,40 @@ export async function POST(request: NextRequest) {
         }
 
         if (messageText && !isVoice) {
+          const accounts = await db.account.findMany({
+            where: { isArchived: false },
+            select: { id: true, name: true, type: true },
+            orderBy: { createdAt: "asc" },
+          });
+
           const parsed = await parseTextWithAI(
             messageText,
             appConfig?.geminiApiKey || undefined,
-            appConfig?.defaultCurrency || "USD"
+            appConfig?.defaultCurrency || "MYR",
+            accounts
           );
 
-          if (parsed.amount > 0) {
+          if (parsed.intent === "TODO" && parsed.todoTitle) {
+            await db.todoTask.create({
+              data: {
+                title: parsed.todoTitle,
+                description: `[From: ${fromNumber}] ${messageText}`,
+                priority: parsed.todoPriority || "MEDIUM",
+                dueDate: parsed.todoDueDate ? new Date(parsed.todoDueDate) : null,
+              },
+            });
+            console.log(`📋 Created WhatsApp task: ${parsed.todoTitle}`);
+          } else if (parsed.intent === "NOTE") {
+            await db.note.create({
+              data: {
+                title: parsed.noteTitle || "WhatsApp 便签",
+                content: parsed.noteContent || messageText,
+                category: parsed.noteCategory || "General",
+                color: "#3b82f6",
+              },
+            });
+            console.log(`📝 Saved WhatsApp note: ${parsed.noteTitle || "便签"}`);
+          } else if (parsed.amount > 0) {
             await db.transaction.create({
               data: {
                 amount: parsed.amount,
@@ -86,11 +113,30 @@ export async function POST(request: NextRequest) {
                 source: "WHATSAPP_TEXT",
                 rawInput: `[From: ${fromNumber}] ${messageText}`,
                 currency: parsed.currency,
+                accountId: parsed.accountId || null,
                 date: parsed.date ? new Date(parsed.date) : new Date(),
               },
             });
 
-            console.log(`✅ Logged WhatsApp text expense: ${parsed.currency} ${parsed.amount} for ${parsed.category}`);
+            if (parsed.accountId) {
+              if (parsed.type === "EXPENSE") {
+                await db.account.update({
+                  where: { id: parsed.accountId },
+                  data: { balance: { decrement: parsed.amount } },
+                }).catch(() => {});
+              } else if (parsed.type === "INCOME") {
+                await db.account.update({
+                  where: { id: parsed.accountId },
+                  data: { balance: { increment: parsed.amount } },
+                }).catch(() => {});
+              }
+            }
+
+            console.log(
+              `✅ Logged WhatsApp text expense: ${parsed.currency} ${parsed.amount} for ${parsed.category} [Account: ${
+                parsed.accountName || "Unassigned"
+              }]`
+            );
           }
         }
       }
