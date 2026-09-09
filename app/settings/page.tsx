@@ -16,6 +16,7 @@ import {
   AlertCircle,
   Eye,
   EyeOff,
+  RefreshCw,
 } from "lucide-react";
 
 export default function SettingsPage() {
@@ -36,6 +37,31 @@ export default function SettingsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState("");
+
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [testKeyResult, setTestKeyResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const handleTestKey = async () => {
+    setIsTestingKey(true);
+    setTestKeyResult(null);
+    try {
+      const res = await fetch("/api/ai/test-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: geminiApiKey || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestKeyResult({ success: true, message: data.message || "Connection successful!" });
+      } else {
+        setTestKeyResult({ success: false, message: data.error || "Connection failed." });
+      }
+    } catch (err: any) {
+      setTestKeyResult({ success: false, message: err.message || "Failed to contact test endpoint." });
+    } finally {
+      setIsTestingKey(false);
+    }
+  };
 
   useEffect(() => {
     fetch("/api/config")
@@ -256,9 +282,41 @@ export default function SettingsPage() {
               onChange={(e) => setGeminiApiKey(e.target.value)}
               className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-500 font-mono"
             />
-            <p className="text-[11px] text-slate-400 mt-1">
-              Never exposed to public. Used by Gemini 1.5 Flash for natural language and voice audio parsing.
-            </p>
+            <div className="flex items-center justify-between gap-2 mt-2">
+              <p className="text-[11px] text-slate-400">
+                Powered by Google Gemini Flash with automatic model failover for voice notes, receipts, and text expenses.
+              </p>
+              <button
+                type="button"
+                onClick={handleTestKey}
+                disabled={isTestingKey || (!hasGeminiKey && !geminiApiKey)}
+                className="shrink-0 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-[11px] font-medium text-slate-200 border border-slate-700 transition-colors disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+              >
+                {isTestingKey ? (
+                  <>
+                    <RefreshCw className="h-3 w-3 animate-spin text-purple-400" />
+                    <span>Testing...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="h-3 w-3 text-purple-400" />
+                    <span>Test AI</span>
+                  </>
+                )}
+              </button>
+            </div>
+            {testKeyResult && (
+              <div
+                className={`text-xs px-3 py-1.5 rounded-lg border mt-1.5 flex items-center gap-1.5 ${
+                  testKeyResult.success
+                    ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                    : "text-rose-400 bg-rose-500/10 border-rose-500/20"
+                }`}
+              >
+                <span>{testKeyResult.success ? "✅" : "⚠️"}</span>
+                <span>{testKeyResult.message}</span>
+              </div>
+            )}
           </div>
 
           <div>

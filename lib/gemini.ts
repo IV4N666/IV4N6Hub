@@ -63,6 +63,137 @@ export function cleanJsonText(raw: string): string {
   return cleaned.trim();
 }
 
+// Prioritized list of modern Gemini models
+export const CANDIDATE_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-2.5-flash-lite",
+  "gemini-1.5-flash-latest",
+  "gemini-1.5-flash",
+];
+
+// In-memory cache for the resolved model per API key (1 hour TTL)
+const modelCache = new Map<string, { model: string; timestamp: number }>();
+
+/**
+ * Dynamically resolves the best supported Gemini model for the given API key.
+ * Queries Google's ListModels endpoint first; falls back to candidate models.
+ */
+export async function resolveWorkingModel(apiKey: string): Promise<string> {
+  const cached = modelCache.get(apiKey);
+  if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) {
+    return cached.model;
+  }
+
+  try {
+    const res = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
+      {
+        signal: AbortSignal.timeout(4000),
+      }
+    );
+
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data?.models)) {
+        const availableModels: string[] = data.models
+          .filter((m: any) =>
+            Array.isArray(m.supportedGenerationMethods) &&
+            m.supportedGenerationMethods.includes("generateContent")
+          )
+          .map((m: any) => (m.name || "").replace(/^models\//, ""));
+
+        // 1. Match against prioritized candidate models
+        for (const candidate of CANDIDATE_MODELS) {
+          if (availableModels.includes(candidate)) {
+            modelCache.set(apiKey, { model: candidate, timestamp: Date.now() });
+            console.log(`[Gemini] Discovered available model from API: ${candidate}`);
+            return candidate;
+          }
+        }
+
+        // 2. Try any available flash model
+        const anyFlash = availableModels.find((m) => m.toLowerCase().includes("flash"));
+        if (anyFlash) {
+          modelCache.set(apiKey, { model: anyFlash, timestamp: Date.now() });
+          console.log(`[Gemini] Selected available flash model: ${anyFlash}`);
+          return anyFlash;
+        }
+
+        // 3. Fallback to any model that supports generateContent
+        if (availableModels.length > 0) {
+          modelCache.set(apiKey, { model: availableModels[0], timestamp: Date.now() });
+          console.log(`[Gemini] Falling back to available model: ${availableModels[0]}`);
+          return availableModels[0];
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("[Gemini] Unable to fetch model list from Google API, using default fallback:", err);
+  }
+
+  // Default to gemini-2.5-flash
+  return "gemini-2.5-flash";
+}
+
+/**
+ * Executes a Gemini model.generateContent call with automatic model failover.
+ * If the current model returns 404 (deprecated / not found), it automatically retries
+ * with the next supported candidate model.
+ */
+export async function generateContentWithFallback(
+  genAI: GoogleGenerativeAI,
+  apiKey: string,
+  contents: any,
+  generationConfig?: any
+) {
+  const resolvedModel = await resolveWorkingModel(apiKey);
+
+  const trialQueue = [
+    resolvedModel,
+    ...CANDIDATE_MODELS.filter((m) => m !== resolvedModel),
+  ];
+
+  let lastError: any = null;
+
+  for (const modelName of trialQueue) {
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig,
+      });
+
+      const result = await model.generateContent(contents);
+
+      // Successfully processed! Cache this model as working
+      modelCache.set(apiKey, { model: modelName, timestamp: Date.now() });
+      return result;
+    } catch (err: any) {
+      lastError = err;
+      const errMsg = (err?.message || String(err)).toLowerCase();
+
+      // Check if this error is 404 / model not found / unsupported
+      const isModelNotFoundError =
+        errMsg.includes("404") ||
+        errMsg.includes("not found") ||
+        errMsg.includes("is not supported for generatecontent") ||
+        errMsg.includes("models/");
+
+      if (isModelNotFoundError) {
+        console.warn(
+          `[Gemini Fallback] Model '${modelName}' not available (404/unsupported), trying next candidate...`
+        );
+        continue;
+      }
+
+      // Rethrow quota, permission, safety or parsing errors immediately
+      throw err;
+    }
+  }
+
+  throw lastError;
+}
+
 export async function parseTextWithAI(
   text: string,
   userApiKey?: string,
@@ -73,14 +204,6 @@ export async function parseTextWithAI(
   if (apiKey) {
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        },
-      });
-
       const today = getTodayDateString();
       const prompt = `You are a financial assistant for an expense tracker. 
 Analyze this user text input: "${text}"
@@ -103,7 +226,10 @@ Extract and return ONLY a JSON object conforming to this schema:
   "confidence": number (float between 0 and 1)
 }`;
 
-      const result = await model.generateContent(prompt);
+      const result = await generateContentWithFallback(genAI, apiKey, prompt, {
+        responseMimeType: "application/json",
+        temperature: 0.1,
+      });
       const responseText = cleanJsonText(result.response.text());
       const parsed = JSON.parse(responseText);
 
@@ -150,14 +276,6 @@ export async function parseAudioWithAI(
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-1.5-flash",
-      generationConfig: {
-        responseMimeType: "application/json",
-        temperature: 0.1,
-      },
-    });
-
     const today = getTodayDateString();
     const prompt = `Listen to this user's voice message regarding a financial transaction or expense/income.
 Current Date: ${today}
@@ -188,7 +306,10 @@ Extract and return ONLY a JSON object:
       },
     };
 
-    const result = await model.generateContent([prompt, audioPart]);
+    const result = await generateContentWithFallback(genAI, apiKey, [prompt, audioPart], {
+      responseMimeType: "application/json",
+      temperature: 0.1,
+    });
     const responseText = cleanJsonText(result.response.text());
     const parsed = JSON.parse(responseText);
 
@@ -223,14 +344,6 @@ export async function parseReceiptImageWithAI(
   }
 
   const genAI = new GoogleGenerativeAI(apiKey);
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    generationConfig: {
-      responseMimeType: "application/json",
-      temperature: 0.1,
-    },
-  });
-
   const today = getTodayDateString();
   const prompt = `You are an expert OCR financial receipt and invoice scanner.
 Analyze this receipt/invoice photo carefully.
@@ -264,7 +377,10 @@ Extract and return ONLY a JSON object:
     },
   };
 
-  const result = await model.generateContent([prompt, imagePart]);
+  const result = await generateContentWithFallback(genAI, apiKey, [prompt, imagePart], {
+    responseMimeType: "application/json",
+    temperature: 0.1,
+  });
   const responseText = cleanJsonText(result.response.text());
   const parsed = JSON.parse(responseText);
 
@@ -292,14 +408,6 @@ export async function parseSmartVoiceIntent(
   if (apiKey) {
     try {
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({
-        model: "gemini-1.5-flash",
-        generationConfig: {
-          responseMimeType: "application/json",
-          temperature: 0.1,
-        },
-      });
-
       const prompt = `Analyze user speech/text input and classify its intent into one of:
 1. "EXPENSE" - spending money or buying goods
 2. "INCOME" - receiving money/salary
@@ -322,7 +430,10 @@ Return ONLY JSON:
   "priority": "HIGH" | "MEDIUM" | "LOW" (for todos)
 }`;
 
-      const result = await model.generateContent(prompt);
+      const result = await generateContentWithFallback(genAI, apiKey, prompt, {
+        responseMimeType: "application/json",
+        temperature: 0.1,
+      });
       const responseText = cleanJsonText(result.response.text());
       const parsed = JSON.parse(responseText);
       return parsed;

@@ -11,6 +11,7 @@ import {
   Sparkles,
   Smartphone,
   ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 import { WhatsAppSimulator } from "@/components/whatsapp/WhatsAppSimulator";
 import { WhatsAppWebhookGuide } from "@/components/whatsapp/WhatsAppWebhookGuide";
@@ -19,7 +20,11 @@ export default function WhatsAppHubPage() {
   const [activeTab, setActiveTab] = useState<"simulator" | "webhook" | "apikey">("simulator");
   const [currency, setCurrency] = useState("USD");
   const [apiKey, setApiKey] = useState("");
+  const [maskedKey, setMaskedKey] = useState("");
+  const [hasKey, setHasKey] = useState(false);
   const [savedKey, setSavedKey] = useState(false);
+  const [isTestingKey, setIsTestingKey] = useState(false);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   useEffect(() => {
     fetch("/api/config")
@@ -27,7 +32,8 @@ export default function WhatsAppHubPage() {
       .then((data) => {
         if (data.success && data.config) {
           if (data.config.defaultCurrency) setCurrency(data.config.defaultCurrency);
-          if (data.config.geminiApiKey) setApiKey(data.config.geminiApiKey);
+          if (data.config.maskedGeminiKey) setMaskedKey(data.config.maskedGeminiKey);
+          if (data.config.hasGeminiKey) setHasKey(data.config.hasGeminiKey);
         }
       })
       .catch((err) => console.error(err));
@@ -35,6 +41,7 @@ export default function WhatsAppHubPage() {
 
   const handleSaveApiKey = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!apiKey.trim()) return;
     try {
       const res = await fetch("/api/config", {
         method: "POST",
@@ -43,10 +50,35 @@ export default function WhatsAppHubPage() {
       });
       if (res.ok) {
         setSavedKey(true);
+        setHasKey(true);
+        setMaskedKey(`${apiKey.trim().substring(0, 6)}...${apiKey.trim().substring(apiKey.trim().length - 4)}`);
+        setApiKey("");
         setTimeout(() => setSavedKey(false), 2500);
       }
     } catch (err) {
       console.error("Failed to save API key:", err);
+    }
+  };
+
+  const handleTestKey = async () => {
+    setIsTestingKey(true);
+    setTestResult(null);
+    try {
+      const res = await fetch("/api/ai/test-key", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ apiKey: apiKey.trim() || undefined }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setTestResult({ success: true, message: data.message || "Connected successfully!" });
+      } else {
+        setTestResult({ success: false, message: data.error || "Connection failed." });
+      }
+    } catch (err: any) {
+      setTestResult({ success: false, message: err.message || "Failed to contact test endpoint." });
+    } finally {
+      setIsTestingKey(false);
     }
   };
 
@@ -128,19 +160,26 @@ export default function WhatsAppHubPage() {
 
             <form onSubmit={handleSaveApiKey} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                  Gemini API Key
-                </label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-semibold text-slate-300">
+                    Gemini API Key
+                  </label>
+                  {hasKey && (
+                    <span className="text-[10px] text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded border border-emerald-500/20 font-medium">
+                      Key Active ({maskedKey})
+                    </span>
+                  )}
+                </div>
                 <input
                   type="password"
-                  placeholder="AIzaSy..."
+                  placeholder={hasKey ? "Enter new key to replace existing..." : "AIzaSy..."}
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   className="w-full rounded-xl bg-slate-900 border border-slate-700 px-3.5 py-2.5 text-xs text-white placeholder-slate-500 outline-none focus:border-purple-500 font-mono"
                 />
               </div>
 
-              <div className="flex items-center justify-between pt-2">
+              <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
                 <a
                   href="https://aistudio.google.com/app/apikey"
                   target="_blank"
@@ -151,20 +190,55 @@ export default function WhatsAppHubPage() {
                   <span>↗</span>
                 </a>
 
-                <button
-                  type="submit"
-                  className="rounded-xl bg-purple-600 hover:bg-purple-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all active:scale-95 flex items-center gap-1.5"
-                >
-                  {savedKey ? (
-                    <>
-                      <CheckCircle className="h-4 w-4 text-emerald-300" />
-                      <span>Saved!</span>
-                    </>
-                  ) : (
-                    <span>Save Key</span>
-                  )}
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleTestKey}
+                    disabled={isTestingKey || (!hasKey && !apiKey.trim())}
+                    className="rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 px-3 py-2 text-xs font-medium text-slate-200 transition-all disabled:opacity-40 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {isTestingKey ? (
+                      <>
+                        <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-400" />
+                        <span>Testing...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="h-3.5 w-3.5 text-purple-400" />
+                        <span>Test Connection</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="submit"
+                    disabled={!apiKey.trim()}
+                    className="rounded-xl bg-purple-600 hover:bg-purple-500 disabled:opacity-40 px-4 py-2 text-xs font-bold text-white shadow-md shadow-purple-600/30 transition-all active:scale-95 flex items-center gap-1.5 cursor-pointer"
+                  >
+                    {savedKey ? (
+                      <>
+                        <CheckCircle className="h-4 w-4 text-emerald-300" />
+                        <span>Saved!</span>
+                      </>
+                    ) : (
+                      <span>Save Key</span>
+                    )}
+                  </button>
+                </div>
               </div>
+
+              {testResult && (
+                <div
+                  className={`text-xs px-3.5 py-2 rounded-xl border mt-2 flex items-center gap-2 ${
+                    testResult.success
+                      ? "text-emerald-400 bg-emerald-500/10 border-emerald-500/20"
+                      : "text-rose-400 bg-rose-500/10 border-rose-500/20"
+                  }`}
+                >
+                  <span>{testResult.success ? "✅" : "⚠️"}</span>
+                  <span>{testResult.message}</span>
+                </div>
+              )}
             </form>
           </div>
         </div>

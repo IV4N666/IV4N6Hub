@@ -29,7 +29,7 @@
 * **UI 与样式**：TailwindCSS 3.4 + 赛博发光暗黑美学 + HTML5 Canvas 交互星空粒子（低功耗 GPU 加速）
 * **图表与可视化**：Lucide React + Recharts (动态折线图、面积图、分类进度条、硬件波形图)
 * **数据库与持久化**：Prisma ORM 5.22 + Supabase PostgreSQL (IPv4 Session Pooler 模式)
-* **人工智能能力**：Google Gemini 1.5 Flash (多模态视觉 OCR、语音转录 Speech-to-Text、自然语言消费解析、智能意图分流)
+* **人工智能能力**：Google Gemini Flash (自适应发现 Gemini 2.5 / 2.0 / 1.5 Flash 多模态视觉 OCR、语音转录 Speech-to-Text、自然语言消费解析、智能意图分流与自动容灾降级)
 * **安全防护**：Web Crypto HMAC-SHA256 签名 + HttpOnly 加密 Cookie + Next.js 全局中间件鉴权拦截 + 密钥脱敏 + WhatsApp 手机号白名单
 
 ---
@@ -42,7 +42,8 @@ c:\Users\Ivan\Downloads\Test/
 │   ├── api/                            # 后端 RESTful API 接口
 │   │   ├── ai/
 │   │   │   ├── ocr-receipt/route.ts   # 🧾 拍照发票视觉识别 API (Gemini Vision OCR)
-│   │   │   └── parse/route.ts          # 💬 自然语言 & 语音多模态记账解析 API
+│   │   │   ├── parse/route.ts          # 💬 自然语言 & 语音多模态记账解析 API
+│   │   │   └── test-key/route.ts       # ⚡ Google Gemini API 连通性测试 API
 │   │   ├── auth/
 │   │   │   ├── check/route.ts          # 🔍 检查当前登录状态 API
 │   │   │   ├── login/route.ts          # 🔑 单人密码登录 (支持环境变量秒级比对)
@@ -88,7 +89,7 @@ c:\Users\Ivan\Downloads\Test/
 │   ├── category-meta.ts                # 🏷️ 分类元数据、色彩与 MYR 格式化工具
 │   ├── db.ts                           # 🗄️ Prisma 客户端单例工厂
 │   ├── finance-utils.ts                # 🧮 月度/年度财务统计聚合计算逻辑
-│   ├── gemini.ts                       # 🧠 Google Gemini 1.5 Flash (OCR、语音、文本解析)
+│   ├── gemini.ts                       # 🧠 Google Gemini 智能引擎 (自适应模型检测与多级容灾降级)
 │   └── types.ts                        # 📐 TypeScript 核心数据类型定义
 ├── prisma/
 │   └── schema.prisma                   # Prisma 数据库架构定义 (PostgreSQL 云端)
@@ -232,7 +233,7 @@ c:\Users\Ivan\Downloads\Test/
 
 ### 🧾 2. 拍照/发票视觉识图记账 (`components/finance/AddTransactionModal.tsx`)
 * 在记账弹窗中点击 **“📸 Scan Receipt (AI)”**，拍照或上传购物收据图片。
-* 后端调用 Gemini 1.5 Flash 视觉模型，结构化抽取商家、商品清单明细、单价、税额与总金额并自动填充表单。
+* 后端调用 Google Gemini Flash 视觉模型，结构化抽取商家、商品清单明细、单价、税额与总金额并自动填充表单。
 
 ### 📝 3. 闪念便签与智能待办 (`app/notes`)
 * **待办任务**：设置优先级、截止日期，一键勾选完成并带划线归档。
