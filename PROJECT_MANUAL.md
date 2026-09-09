@@ -3,7 +3,7 @@
 > **最后更新与实战验证**：2026-08-25  
 > **系统状态**：已正式成功部署到 Vercel 生产环境，连接 Supabase 云数据库，全功能通过编译与测试 (`npm run build` 100% 通过)  
 > **官方 GitHub 仓库**：`https://github.com/IV4N666/IV4N6Hub`  
-> **本地代码库路径**：`c:\Users\Ivan\Downloads\Test`
+> **本地代码库路径**：`./` (项目根目录)
 
 ---
 
@@ -37,7 +37,7 @@
 ## 2. 项目完整文件结构与代码地图
 
 ```text
-c:\Users\Ivan\Downloads\Test/
+./
 ├── app/                                # Next.js 14 App Router 页面与路由
 │   ├── api/                            # 后端 RESTful API 接口
 │   │   ├── ai/
@@ -206,11 +206,11 @@ c:\Users\Ivan\Downloads\Test/
 
 ## 5. 安全与单人私密认证架构
 
-1. **中间件统一拦截 ([`middleware.ts`](file:///c:/Users/Ivan/Downloads/Test/middleware.ts))**：
+1. **中间件统一拦截 ([`middleware.ts`](middleware.ts))**：
    * 所有访问请求先过中间件；除公开接口（登录、WhatsApp Webhook 回调、静态资源）外，未授权请求直接拦截：
      * 页面路由：307 重定向至 `/login?from=...`
      * API 路由：返回 HTTP `401 Unauthorized`
-2. **防篡改 Session 签发 ([`lib/auth.ts`](file:///c:/Users/Ivan/Downloads/Test/lib/auth.ts))**：
+2. **防篡改 Session 签发 ([`lib/auth.ts`](lib/auth.ts))**：
    * 基于 Web Crypto 原生实现 HMAC-SHA256 签名，生成包含有效期与随机 Nonce 的 Token。
    * Cookie 配置为：`HttpOnly; SameSite=Lax; Path=/; MaxAge=7天; Secure (生产环境)`，彻底杜绝 JavaScript 脚本通过 XSS 窃取会话。
 3. **秒级登录容错 (Fast-Path Auth)**：
@@ -219,7 +219,7 @@ c:\Users\Ivan\Downloads\Test/
    * `/api/config` 绝不向客户端暴露明文 `GEMINI_API_KEY`，统一返回掩码（如 `AIzaSy...4xQ9`），更新时若未修改则自动保留原密钥。
 5. **WhatsApp 白名单防御**：
    * 仅允许 `ALLOWED_PHONE_NUMBERS` 中登记的手机号触发记账，外部恶意陌生人消息会被直接忽略。
-6. **安全 HTTP 标头 ([`next.config.mjs`](file:///c:/Users/Ivan/Downloads/Test/next.config.mjs))**：
+6. **安全 HTTP 标头 ([`next.config.mjs`](next.config.mjs))**：
    * 注入 HSTS、`X-Frame-Options: SAMEORIGIN`（防点击劫持）、`X-Content-Type-Options: nosniff`，移除 `X-Powered-By`。
 
 ---
@@ -273,7 +273,7 @@ c:\Users\Ivan\Downloads\Test/
 ### 🌟 最佳实践连接配置 (Supabase Session Pooler)
 * 在 Supabase 连接设置中选择 **`Session pooler`**，格式为：
   ```text
-  postgresql://postgres.wyqfxbihtmntvwbermbb:你的密码@aws-0-ap-southeast-1.pooler.supabase.com:5432/postgres
+  postgresql://postgres.[YOUR-PROJECT-REF]:[YOUR-PASSWORD]@[YOUR-REGION].pooler.supabase.com:5432/postgres
   ```
 * **排错要点**：
   1. 避免使用 `db.xxx.supabase.co:5432` 直连（在很多 IPv4 家用宽带下会报 `P1001: Can't reach`）。
@@ -298,4 +298,4 @@ c:\Users\Ivan\Downloads\Test/
 * **方法 2**：在 Vercel 环境变量中修改 `ADMIN_PASSWORD="新密码"`，重启后立即生效。
 
 ### 如何增加新的分类或币种？
-* 打开 [`lib/category-meta.ts`](file:///c:/Users/Ivan/Downloads/Test/lib/category-meta.ts)，在 `CATEGORY_DEFINITIONS` 或 `CURRENCY_SYMBOLS` 字典中追加即可。
+* 打开 [`lib/category-meta.ts`](lib/category-meta.ts)，在 `CATEGORY_DEFINITIONS` 或 `CURRENCY_SYMBOLS` 字典中追加即可。
