@@ -29,7 +29,7 @@
 * **UI 与样式**：TailwindCSS 3.4 + 赛博发光暗黑美学 + HTML5 Canvas 交互星空粒子（低功耗 GPU 加速）
 * **图表与可视化**：Lucide React + Recharts (动态折线图、面积图、分类进度条、硬件波形图)
 * **数据库与持久化**：Prisma ORM 5.22 + Supabase PostgreSQL (IPv4 Session Pooler 模式)
-* **人工智能能力**：Google Gemini Flash (自适应发现 Gemini 2.5 / 2.0 / 1.5 Flash 多模态视觉 OCR、语音转录 Speech-to-Text、自然语言消费解析、智能意图分流与自动容灾降级)
+* **人工智能能力**：Google Gemini Flash (自适应发现 Gemini 2.5 / 3.x Flash 多模态视觉 OCR、语音转录 Speech-to-Text、自然语言消费解析、智能意图分流与自动容灾降级)
 * **安全防护**：Web Crypto HMAC-SHA256 签名 + HttpOnly 加密 Cookie + Next.js 全局中间件鉴权拦截 + 密钥脱敏 + WhatsApp 手机号白名单
 
 ---

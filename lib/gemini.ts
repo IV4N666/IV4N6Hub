@@ -63,13 +63,31 @@ export function cleanJsonText(raw: string): string {
   return cleaned.trim();
 }
 
-// Prioritized list of modern Gemini models
+// Check if a model is deprecated, shut down, or unsupported for generateContent
+export function isModelDeprecated(name: string): boolean {
+  if (!name) return true;
+  const clean = name.replace(/^models\//, "").toLowerCase();
+  return (
+    clean.startsWith("gemini-1.5") ||
+    clean.startsWith("gemini-1.0") ||
+    clean.startsWith("gemini-2.0") ||
+    clean === "gemini-pro" ||
+    clean.includes("bison")
+  );
+}
+
+// Prioritized list of active, supported modern Gemini models (2.5 & 3.x Flash)
 export const CANDIDATE_MODELS = [
   "gemini-2.5-flash",
-  "gemini-2.0-flash",
   "gemini-2.5-flash-lite",
-  "gemini-1.5-flash-latest",
-  "gemini-1.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-3.8-flash",
+  "gemini-3.7-flash",
+  "gemini-3.6-flash",
+  "gemini-3.5-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-flash-lite",
+  "gemini-2.5-pro",
 ];
 
 // In-memory cache for the resolved model per API key (1 hour TTL)
@@ -77,11 +95,11 @@ const modelCache = new Map<string, { model: string; timestamp: number }>();
 
 /**
  * Dynamically resolves the best supported Gemini model for the given API key.
- * Queries Google's ListModels endpoint first; falls back to candidate models.
+ * Queries Google's ListModels endpoint first; filters out any retired/deprecated models.
  */
 export async function resolveWorkingModel(apiKey: string): Promise<string> {
   const cached = modelCache.get(apiKey);
-  if (cached && Date.now() - cached.timestamp < 60 * 60 * 1000) {
+  if (cached && !isModelDeprecated(cached.model) && Date.now() - cached.timestamp < 60 * 60 * 1000) {
     return cached.model;
   }
 
@@ -89,19 +107,21 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
     const res = await fetch(
       `https://generativelanguage.googleapis.com/v1beta/models?key=${apiKey}`,
       {
-        signal: AbortSignal.timeout(4000),
+        signal: AbortSignal.timeout(5000),
       }
     );
 
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data?.models)) {
+        // Filter models that support generateContent AND are strictly NOT deprecated/shut down
         const availableModels: string[] = data.models
           .filter((m: any) =>
             Array.isArray(m.supportedGenerationMethods) &&
             m.supportedGenerationMethods.includes("generateContent")
           )
-          .map((m: any) => (m.name || "").replace(/^models\//, ""));
+          .map((m: any) => (m.name || "").replace(/^models\//, ""))
+          .filter((name: string) => !isModelDeprecated(name));
 
         // 1. Match against prioritized candidate models
         for (const candidate of CANDIDATE_MODELS) {
@@ -112,7 +132,7 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
           }
         }
 
-        // 2. Try any available flash model
+        // 2. Try any available active flash model (excluding deprecated)
         const anyFlash = availableModels.find((m) => m.toLowerCase().includes("flash"));
         if (anyFlash) {
           modelCache.set(apiKey, { model: anyFlash, timestamp: Date.now() });
@@ -120,13 +140,15 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
           return anyFlash;
         }
 
-        // 3. Fallback to any model that supports generateContent
+        // 3. Fallback to any active non-deprecated model that supports generateContent
         if (availableModels.length > 0) {
           modelCache.set(apiKey, { model: availableModels[0], timestamp: Date.now() });
           console.log(`[Gemini] Falling back to available model: ${availableModels[0]}`);
           return availableModels[0];
         }
       }
+    } else {
+      console.warn(`[Gemini] Model listing request returned status ${res.status}`);
     }
   } catch (err) {
     console.warn("[Gemini] Unable to fetch model list from Google API, using default fallback:", err);
@@ -139,7 +161,7 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
 /**
  * Executes a Gemini model.generateContent call with automatic model failover.
  * If the current model returns 404 (deprecated / not found), it automatically retries
- * with the next supported candidate model.
+ * with the next supported candidate model from CANDIDATE_MODELS.
  */
 export async function generateContentWithFallback(
   genAI: GoogleGenerativeAI,
@@ -149,10 +171,11 @@ export async function generateContentWithFallback(
 ) {
   const resolvedModel = await resolveWorkingModel(apiKey);
 
+  // Active models trial queue, strictly omitting any deprecated models
   const trialQueue = [
     resolvedModel,
     ...CANDIDATE_MODELS.filter((m) => m !== resolvedModel),
-  ];
+  ].filter((m) => !isModelDeprecated(m));
 
   let lastError: any = null;
 
@@ -167,6 +190,7 @@ export async function generateContentWithFallback(
 
       // Successfully processed! Cache this model as working
       modelCache.set(apiKey, { model: modelName, timestamp: Date.now() });
+      (result as any).model = modelName;
       return result;
     } catch (err: any) {
       lastError = err;
@@ -191,7 +215,13 @@ export async function generateContentWithFallback(
     }
   }
 
-  throw lastError;
+  const detailedError = new Error(
+    `Failed to generate content: None of the candidate Gemini models (${trialQueue.join(
+      ", "
+    )}) were accessible. Original error: ${lastError?.message || lastError}`
+  );
+  (detailedError as any).originalError = lastError;
+  throw detailedError;
 }
 
 export async function parseTextWithAI(

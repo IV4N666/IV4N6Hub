@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { resolveWorkingModel, generateContentWithFallback } from "@/lib/gemini";
@@ -26,11 +26,12 @@ export async function POST(request: NextRequest) {
     const resolvedModel = await resolveWorkingModel(apiKey);
     const result = await generateContentWithFallback(genAI, apiKey, "Hello! Respond with single word 'OK'.");
     const responseText = result.response.text().trim();
+    const actualModel = (result as any)?.model || resolvedModel;
 
     return NextResponse.json({
       success: true,
-      model: resolvedModel,
-      message: `Successfully connected to Google Gemini (${resolvedModel})!`,
+      model: actualModel,
+      message: `Successfully connected to Google Gemini (${actualModel})!`,
       sample: responseText,
     });
   } catch (error: any) {
