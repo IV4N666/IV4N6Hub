@@ -281,19 +281,19 @@ export default function NotesAndTasksPage() {
   );
 
   return (
-    <div className="p-4 sm:p-6 lg:p-8 space-y-6 max-w-7xl mx-auto">
+    <div className="p-3.5 sm:p-6 lg:p-8 space-y-5 sm:space-y-6 max-w-7xl mx-auto pb-28 md:pb-12">
       {/* Header & Tabs */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-800 pb-5">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 sm:gap-4 border-b border-slate-800 pb-4 sm:pb-5">
         <div>
-          <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20 text-white">
-              <StickyNote className="h-5 w-5" />
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            <div className="flex h-9 w-9 sm:h-10 sm:w-10 items-center justify-center rounded-2xl bg-gradient-to-tr from-amber-500 to-orange-600 shadow-lg shadow-orange-500/20 text-white shrink-0">
+              <StickyNote className="h-4 w-4 sm:h-5 sm:w-5" />
             </div>
             <div>
-              <h1 className="text-2xl font-black tracking-tight text-white">
+              <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
                 Notes & Smart Tasks
               </h1>
-              <p className="text-xs text-slate-400 mt-0.5">
+              <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
                 Organize thoughts, capture voice memos, and manage daily action items.
               </p>
             </div>
@@ -301,12 +301,12 @@ export default function NotesAndTasksPage() {
         </div>
 
         {/* Tab switcher + Voice AI Action */}
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 sm:gap-3 w-full sm:w-auto">
           {/* Voice Memo Quick Record Button */}
           <button
             onClick={isRecording ? stopVoiceRecording : startVoiceRecording}
             disabled={voiceProcessing}
-            className={`flex items-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all shadow-md active:scale-95 ${
+            className={`flex items-center justify-center gap-1.5 rounded-xl px-3 py-2 text-xs font-bold transition-all shadow-md active:scale-95 shrink-0 ${
               isRecording
                 ? "bg-rose-600 text-white recording-pulse"
                 : voiceProcessing
@@ -316,26 +316,26 @@ export default function NotesAndTasksPage() {
           >
             {isRecording ? (
               <>
-                <MicOff className="h-4 w-4 animate-spin" />
-                <span>Recording... (Click to Stop)</span>
+                <MicOff className="h-3.5 w-3.5 animate-spin" />
+                <span>Recording... (Stop)</span>
               </>
             ) : voiceProcessing ? (
               <>
-                <Sparkles className="h-4 w-4 animate-spin" />
-                <span>AI Transcribing...</span>
+                <Sparkles className="h-3.5 w-3.5 animate-spin" />
+                <span>Transcribing...</span>
               </>
             ) : (
               <>
-                <Mic className="h-4 w-4 text-amber-400" />
+                <Mic className="h-3.5 w-3.5 text-amber-400" />
                 <span>Voice Memo</span>
               </>
             )}
           </button>
 
-          <div className="flex rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs">
+          <div className="flex flex-1 sm:flex-initial rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs justify-center">
             <button
               onClick={() => setActiveTab("TODOS")}
-              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-bold transition-all ${
+              className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 font-bold transition-all ${
                 activeTab === "TODOS"
                   ? "bg-blue-600 text-white shadow-md"
                   : "text-slate-400 hover:text-white"
@@ -346,7 +346,7 @@ export default function NotesAndTasksPage() {
             </button>
             <button
               onClick={() => setActiveTab("NOTES")}
-              className={`flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 font-bold transition-all ${
+              className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 font-bold transition-all ${
                 activeTab === "NOTES"
                   ? "bg-purple-600 text-white shadow-md"
                   : "text-slate-400 hover:text-white"
@@ -402,11 +402,11 @@ export default function NotesAndTasksPage() {
               />
             </div>
 
-            <div className="flex items-center gap-2 w-full sm:w-auto">
+            <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
               <select
                 value={newTodoPriority}
                 onChange={(e) => setNewTodoPriority(e.target.value as any)}
-                className="rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2.5 text-xs text-slate-300 outline-none cursor-pointer"
+                className="flex-1 sm:flex-initial rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-xs text-slate-300 outline-none cursor-pointer"
               >
                 <option value="LOW">🔵 Low</option>
                 <option value="MEDIUM">🟡 Med</option>
@@ -417,14 +417,14 @@ export default function NotesAndTasksPage() {
                 type="date"
                 value={newTodoDueDate}
                 onChange={(e) => setNewTodoDueDate(e.target.value)}
-                className="rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2.5 text-xs text-slate-300 outline-none"
+                className="flex-1 sm:flex-initial rounded-xl bg-slate-950/80 border border-slate-800 px-3 py-2 text-xs text-slate-300 outline-none"
               />
 
               <button
                 type="submit"
-                className="rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2.5 text-xs font-bold text-white shadow-md shadow-blue-500/30 transition-all active:scale-95 shrink-0"
+                className="w-full sm:w-auto rounded-xl bg-blue-600 hover:bg-blue-500 px-4 py-2 text-xs font-bold text-white shadow-md shadow-blue-500/30 transition-all active:scale-95 shrink-0"
               >
-                Add
+                Add Task
               </button>
             </div>
           </form>

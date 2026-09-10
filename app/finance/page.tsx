@@ -31,6 +31,7 @@ import { MetricCards } from "@/components/finance/MetricCards";
 import { ExpenseCharts } from "@/components/finance/ExpenseCharts";
 import { CategoryBudgetList } from "@/components/finance/CategoryBudgetList";
 import { RecentTransactions } from "@/components/finance/RecentTransactions";
+import { DashboardTasksAndNotes } from "@/components/finance/DashboardTasksAndNotes";
 import { AddTransactionModal } from "@/components/finance/AddTransactionModal";
 import { AccountBalanceGrid } from "@/components/finance/AccountBalanceGrid";
 import { RecurringBillsModal } from "@/components/finance/RecurringBillsModal";
@@ -294,6 +295,9 @@ export default function FinanceDashboard() {
           onBudgetUpdated={fetchData}
         />
       )}
+
+      {/* Smart Tasks & Notes Widget */}
+      <DashboardTasksAndNotes />
 
       {/* Recent Transactions list */}
       <RecentTransactions
