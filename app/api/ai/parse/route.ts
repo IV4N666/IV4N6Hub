@@ -250,7 +250,150 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    // 4. Handle Financial Transaction Intent (EXPENSE / INCOME / TRANSFER)
+    // 4. Handle Financial Transaction Intent (EXPENSE / INCOME / TRANSFER / UPDATE_TRANSACTION)
+    const isUpdateIntent = parsedResult.intent === "UPDATE_TRANSACTION" || parsedResult.isUpdate;
+
+    // Check for recent transaction (within 15 minutes) to detect replies with more details or enrichment
+    const recentTx = await db.transaction.findFirst({
+      orderBy: { createdAt: "desc" },
+      include: { account: true },
+    });
+
+    const isRecent =
+      recentTx &&
+      Date.now() - new Date(recentTx.createdAt).getTime() < 15 * 60 * 1000;
+
+    const lowerText = (text || parsedResult.transcript || "").toLowerCase();
+    const hasTagInText = lowerText.includes("#") || lowerText.includes("tag");
+    const isExplicitNew =
+      lowerText.includes("又") ||
+      lowerText.includes("再") ||
+      lowerText.includes("another") ||
+      lowerText.includes("second") ||
+      lowerText.includes("第二笔");
+
+    const isSameAmountEnrichment =
+      Boolean(isRecent) &&
+      !isExplicitNew &&
+      parsedResult.amount > 0 &&
+      recentTx &&
+      Math.abs(recentTx.amount - parsedResult.amount) < 0.01 &&
+      (
+        recentTx.source === "WHATSAPP_VOICE" ||
+        hasTagInText ||
+        Boolean(parsedResult.tags) ||
+        (recentTx.accountId === null && parsedResult.accountId !== null) ||
+        (conversationHistory && conversationHistory.length > 0)
+      );
+
+    const isDetailsReplyToRecent =
+      Boolean(isRecent) &&
+      !isExplicitNew &&
+      recentTx &&
+      (
+        isUpdateIntent ||
+        isSameAmountEnrichment ||
+        hasTagInText ||
+        Boolean(parsedResult.tags) ||
+        (parsedResult.accountId !== null && recentTx.accountId === null) ||
+        lowerText.includes("改") ||
+        lowerText.includes("用")
+      );
+
+    if (autoSave && isDetailsReplyToRecent && recentTx) {
+      // Perform UPDATE on recentTx instead of creating a duplicate ledger entry
+      const newAmount = parsedResult.amount > 0 ? parsedResult.amount : recentTx.amount;
+      const newAccountId =
+        parsedResult.accountId !== undefined && parsedResult.accountId !== null
+          ? parsedResult.accountId
+          : recentTx.accountId;
+      const newType = parsedResult.type || recentTx.type;
+
+      // Reconcile account balances if account or amount changed
+      if (recentTx.accountId !== newAccountId || Math.abs(recentTx.amount - newAmount) > 0.001) {
+        if (recentTx.accountId) {
+          if (recentTx.type === "EXPENSE") {
+            await db.account.update({
+              where: { id: recentTx.accountId },
+              data: { balance: { increment: recentTx.amount } },
+            }).catch(() => {});
+          } else if (recentTx.type === "INCOME") {
+            await db.account.update({
+              where: { id: recentTx.accountId },
+              data: { balance: { decrement: recentTx.amount } },
+            }).catch(() => {});
+          }
+        }
+        if (newAccountId) {
+          if (newType === "EXPENSE") {
+            await db.account.update({
+              where: { id: newAccountId },
+              data: { balance: { decrement: newAmount } },
+            }).catch(() => {});
+          } else if (newType === "INCOME") {
+            await db.account.update({
+              where: { id: newAccountId },
+              data: { balance: { increment: newAmount } },
+            }).catch(() => {});
+          }
+        }
+      }
+
+      const extractedTags =
+        text?.match(/#([\w\u4e00-\u9fa5]+)/g)?.join(" ") ||
+        parsedResult.tags ||
+        recentTx.tags;
+
+      const updatedDescription =
+        parsedResult.description &&
+        parsedResult.description !== "Expense" &&
+        parsedResult.description !== "Other"
+          ? parsedResult.description
+          : recentTx.description;
+
+      const updatedTransaction = await db.transaction.update({
+        where: { id: recentTx.id },
+        data: {
+          description: updatedDescription,
+          tags: extractedTags || null,
+          category:
+            parsedResult.category && parsedResult.category !== "Other"
+              ? parsedResult.category
+              : recentTx.category,
+          amount: newAmount,
+          accountId: newAccountId,
+          type: newType,
+        },
+        include: {
+          account: true,
+        },
+      });
+
+      const accName =
+        updatedTransaction.account?.name ||
+        (newAccountId ? accounts.find((a) => a.id === newAccountId)?.name : null);
+
+      return NextResponse.json({
+        success: true,
+        intent: "UPDATE_TRANSACTION",
+        isUpdate: true,
+        transaction: updatedTransaction,
+        parsed: {
+          ...parsedResult,
+          amount: newAmount,
+          description: updatedTransaction.description,
+          tags: updatedTransaction.tags,
+          accountId: newAccountId,
+          accountName: accName,
+        },
+        message: `✅ 已为您补充更新该笔消费：${updatedTransaction.description} (${
+          updatedTransaction.currency
+        } ${newAmount.toFixed(2)})${accName ? ` [账户: ${accName}]` : ""}${
+          updatedTransaction.tags ? ` (标签: ${updatedTransaction.tags})` : ""
+        }`,
+      });
+    }
+
     let savedTransaction = null;
     if (autoSave && parsedResult.amount > 0) {
       savedTransaction = await db.transaction.create({
@@ -259,6 +402,7 @@ export async function POST(request: NextRequest) {
           type: parsedResult.type,
           category: parsedResult.category,
           description: parsedResult.description,
+          tags: parsedResult.tags || text?.match(/#([\w\u4e00-\u9fa5]+)/g)?.join(" ") || null,
           source,
           rawInput: parsedResult.transcript
             ? `[Voice Transcript] ${parsedResult.transcript}`

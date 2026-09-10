@@ -41,6 +41,7 @@ interface ChatMessage {
     description: string;
     currency: string;
     type: string;
+    tags?: string;
     accountName?: string | null;
     todoTitle?: string;
     todoDueDate?: string | null;
@@ -48,7 +49,7 @@ interface ChatMessage {
     noteTitle?: string;
     noteContent?: string;
   };
-  uploadStatus?: "SAVED" | "NO_AMOUNT" | "ERROR" | "TODO_SAVED" | "NOTE_SAVED" | "CLARIFICATION" | "CANCELLED";
+  uploadStatus?: "SAVED" | "NO_AMOUNT" | "ERROR" | "TODO_SAVED" | "NOTE_SAVED" | "CLARIFICATION" | "CANCELLED" | "UPDATED";
   timestamp: string;
 }
 
@@ -374,6 +375,38 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         ]);
         if (onExpenseLogged) onExpenseLogged();
       }
+      // 0.5. Update Transaction Intent / Enrichment of Recent Record
+      else if (data.intent === "UPDATE_TRANSACTION" || data.isUpdate) {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text:
+              data.message ||
+              `Updated ledger: ${parsed.description} (${formatCurrency(
+                parsed.amount,
+                parsed.currency || currency
+              )})`,
+            transcript: parsed.transcript,
+            intent: "UPDATE_TRANSACTION",
+            transactionId: data.transaction?.id,
+            parsedData: {
+              amount: parsed.amount,
+              category: parsed.category,
+              description: parsed.description,
+              currency: parsed.currency || currency,
+              type: parsed.type || "EXPENSE",
+              tags: parsed.tags,
+              accountName: parsed.accountName,
+            },
+            uploadStatus: "UPDATED",
+            timestamp,
+          },
+        ]);
+        if (onExpenseLogged) onExpenseLogged();
+      }
       // 1. Task / Todo Intent
       else if (data.intent === "TODO" || parsed.intent === "TODO") {
         setMessages((prev) => [
@@ -677,6 +710,14 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                             {msg.parsedData.description}
                           </span>
                         </div>
+                        {msg.parsedData.tags && (
+                          <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-800">
+                            <span className="text-slate-400 shrink-0">Tags</span>
+                            <span className="font-semibold text-cyan-300 truncate text-right">
+                              {msg.parsedData.tags}
+                            </span>
+                          </div>
+                        )}
                         <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-800">
                           <span className="text-slate-400 shrink-0">Payment Account</span>
                           <span className="font-semibold text-slate-200 flex items-center gap-1 min-w-0 truncate text-right">
@@ -691,6 +732,86 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                       {msg.transcript && (
                         <div className="rounded-lg bg-slate-900/80 p-2 text-[10px] text-slate-400 italic border border-slate-800 break-words [overflow-wrap:anywhere] [word-break:break-word]">
                           <span className="text-emerald-400 not-italic font-semibold">Transcript: </span>
+                          &ldquo;{msg.transcript}&rdquo;
+                        </div>
+                      )}
+
+                      <div className="pt-1 flex items-center justify-between gap-2 flex-wrap border-t border-slate-800/60 mt-1">
+                        <Link
+                          href="/transactions"
+                          className="text-[10px] font-bold text-cyan-400 hover:underline flex items-center gap-1 shrink-0"
+                        >
+                          <span>View in Ledger</span>
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                        {msg.transactionId && (
+                          <button
+                            onClick={() => handleCancelItem(msg.id, "TRANSACTION", msg.transactionId)}
+                            disabled={cancellingId === msg.id}
+                            className="flex items-center gap-1 rounded-md bg-rose-500/10 hover:bg-rose-500/20 border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300 transition-colors cursor-pointer"
+                            title="Cancel this transaction and refund account"
+                          >
+                            <Trash2 className="h-2.5 w-2.5 text-rose-400" />
+                            <span>{cancellingId === msg.id ? "Refunding..." : "Cancel & Refund"}</span>
+                          </button>
+                        )}
+                        <span className="text-[10px] text-slate-500 ml-auto">{msg.timestamp}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* If bot response with UPDATED RECORD */}
+                  {!isUser && msg.uploadStatus === "UPDATED" && msg.parsedData && msg.parsedData.amount > 0 && (
+                    <div className="space-y-2.5 min-w-0">
+                      {/* Updated Pill Banner */}
+                      <div className="flex items-center gap-1.5 rounded-lg bg-cyan-500/20 px-2.5 py-1 text-[11px] font-bold text-cyan-300 border border-cyan-500/30 flex-wrap">
+                        <Sparkles className="h-3.5 w-3.5 text-cyan-400 shrink-0" />
+                        <span>DETAILS UPDATED IN LEDGER (已补充更新记录)</span>
+                      </div>
+
+                      {/* Detail Grid */}
+                      <div className="rounded-xl bg-black/40 p-3 border border-slate-700/60 space-y-1.5 min-w-0">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-[11px] text-slate-400 shrink-0">Amount</span>
+                          <span className="text-base font-black text-cyan-400 text-right truncate">
+                            {formatCurrency(msg.parsedData.amount, msg.parsedData.currency || currency)}
+                          </span>
+                        </div>
+                        <div className="flex items-center justify-between gap-2 text-[11px]">
+                          <span className="text-slate-400 shrink-0">Category</span>
+                          <span className="font-semibold text-slate-200 flex items-center gap-1 min-w-0 truncate text-right">
+                            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: meta?.color || "#10b981" }} />
+                            <span className="truncate">{msg.parsedData.category}</span>
+                          </span>
+                        </div>
+                        <div className="flex items-start justify-between gap-2 text-[11px]">
+                          <span className="text-slate-400 shrink-0 mt-0.5">Description</span>
+                          <span className="font-semibold text-white break-words [overflow-wrap:anywhere] text-right max-w-[65%] leading-tight">
+                            {msg.parsedData.description}
+                          </span>
+                        </div>
+                        {msg.parsedData.tags && (
+                          <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-800">
+                            <span className="text-slate-400 shrink-0">Tags</span>
+                            <span className="font-bold text-cyan-300 truncate text-right">
+                              {msg.parsedData.tags}
+                            </span>
+                          </div>
+                        )}
+                        <div className="flex items-center justify-between gap-2 text-[11px] pt-1 border-t border-slate-800">
+                          <span className="text-slate-400 shrink-0">Payment Account</span>
+                          <span className="font-semibold text-slate-200 flex items-center gap-1 min-w-0 truncate text-right">
+                            <span>💳</span>
+                            <span className={msg.parsedData.accountName ? "text-cyan-300 truncate" : "text-amber-400/90 italic"}>
+                              {msg.parsedData.accountName || "Unassigned"}
+                            </span>
+                          </span>
+                        </div>
+                      </div>
+
+                      {msg.transcript && (
+                        <div className="rounded-lg bg-slate-900/80 p-2 text-[10px] text-slate-400 italic border border-slate-800 break-words [overflow-wrap:anywhere] [word-break:break-word]">
+                          <span className="text-cyan-400 not-italic font-semibold">Transcript: </span>
                           &ldquo;{msg.transcript}&rdquo;
                         </div>
                       )}
@@ -933,7 +1054,8 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                     msg.uploadStatus !== "TODO_SAVED" &&
                     msg.uploadStatus !== "NOTE_SAVED" &&
                     msg.uploadStatus !== "CLARIFICATION" &&
-                    msg.uploadStatus !== "CANCELLED" && (
+                    msg.uploadStatus !== "CANCELLED" &&
+                    msg.uploadStatus !== "UPDATED" && (
                       <>
                         <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.text}</p>
                         <div className="mt-1 flex items-center justify-end text-[10px] text-slate-400">

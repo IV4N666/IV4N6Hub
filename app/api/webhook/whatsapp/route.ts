@@ -103,40 +103,85 @@ export async function POST(request: NextRequest) {
               },
             });
             console.log(`📝 Saved WhatsApp note: ${parsed.noteTitle || "便签"}`);
-          } else if (parsed.amount > 0) {
-            await db.transaction.create({
-              data: {
-                amount: parsed.amount,
-                type: parsed.type,
-                category: parsed.category,
-                description: parsed.description,
-                source: "WHATSAPP_TEXT",
-                rawInput: `[From: ${fromNumber}] ${messageText}`,
-                currency: parsed.currency,
-                accountId: parsed.accountId || null,
-                date: parsed.date ? new Date(parsed.date) : new Date(),
-              },
+          } else if (parsed.amount > 0 || parsed.intent === "UPDATE_TRANSACTION") {
+            const isUpdate = parsed.intent === "UPDATE_TRANSACTION";
+            const recentTx = await db.transaction.findFirst({
+              orderBy: { createdAt: "desc" },
+              include: { account: true },
             });
 
-            if (parsed.accountId) {
-              if (parsed.type === "EXPENSE") {
-                await db.account.update({
-                  where: { id: parsed.accountId },
-                  data: { balance: { decrement: parsed.amount } },
-                }).catch(() => {});
-              } else if (parsed.type === "INCOME") {
-                await db.account.update({
-                  where: { id: parsed.accountId },
-                  data: { balance: { increment: parsed.amount } },
-                }).catch(() => {});
-              }
-            }
+            const isRecent =
+              recentTx &&
+              Date.now() - new Date(recentTx.createdAt).getTime() < 15 * 60 * 1000;
 
-            console.log(
-              `✅ Logged WhatsApp text expense: ${parsed.currency} ${parsed.amount} for ${parsed.category} [Account: ${
-                parsed.accountName || "Unassigned"
-              }]`
-            );
+            const lowerMsg = messageText.toLowerCase();
+            const hasTag = lowerMsg.includes("#") || lowerMsg.includes("tag");
+            const isExplicitNew =
+              lowerMsg.includes("又") ||
+              lowerMsg.includes("再") ||
+              lowerMsg.includes("another") ||
+              lowerMsg.includes("second");
+
+            const isSameAmountEnrichment =
+              Boolean(isRecent) &&
+              !isExplicitNew &&
+              parsed.amount > 0 &&
+              recentTx &&
+              Math.abs(recentTx.amount - parsed.amount) < 0.01;
+
+            if (isRecent && recentTx && (isUpdate || isSameAmountEnrichment || (parsed.amount === 0 && hasTag))) {
+              // Update recent transaction
+              const newAmount = parsed.amount > 0 ? parsed.amount : recentTx.amount;
+              const newAccountId = parsed.accountId || recentTx.accountId;
+              const extractedTags = messageText.match(/#([\w\u4e00-\u9fa5]+)/g)?.join(" ") || parsed.tags || recentTx.tags;
+
+              await db.transaction.update({
+                where: { id: recentTx.id },
+                data: {
+                  description: parsed.description && parsed.description !== "Expense" ? parsed.description : recentTx.description,
+                  tags: extractedTags || null,
+                  accountId: newAccountId,
+                  amount: newAmount,
+                },
+              });
+              console.log(`🔄 Updated WhatsApp transaction: ${recentTx.id} with tags: ${extractedTags}`);
+            } else if (parsed.amount > 0) {
+              const tagMatch = messageText.match(/#([\w\u4e00-\u9fa5]+)/g)?.join(" ") || parsed.tags || null;
+              await db.transaction.create({
+                data: {
+                  amount: parsed.amount,
+                  type: parsed.type,
+                  category: parsed.category,
+                  description: parsed.description,
+                  tags: tagMatch,
+                  source: "WHATSAPP_TEXT",
+                  rawInput: `[From: ${fromNumber}] ${messageText}`,
+                  currency: parsed.currency,
+                  accountId: parsed.accountId || null,
+                  date: parsed.date ? new Date(parsed.date) : new Date(),
+                },
+              });
+
+              if (parsed.accountId) {
+                if (parsed.type === "EXPENSE") {
+                  await db.account.update({
+                    where: { id: parsed.accountId },
+                    data: { balance: { decrement: parsed.amount } },
+                  }).catch(() => {});
+                } else if (parsed.type === "INCOME") {
+                  await db.account.update({
+                    where: { id: parsed.accountId },
+                    data: { balance: { increment: parsed.amount } },
+                  }).catch(() => {});
+                }
+              }
+
+              console.log(
+                `✅ Logged WhatsApp text expense: ${parsed.currency} ${parsed.amount} for ${parsed.category} [Account: ${
+                  parsed.accountName || "Unassigned"
+                }]`
+              );
+            }
           }
         }
       }

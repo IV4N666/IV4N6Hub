@@ -363,7 +363,7 @@ export default function TransactionsLedger() {
                   key={tx.id}
                   className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 hover:bg-slate-800/30 transition-colors gap-3"
                 >
-                  <div className="flex items-center gap-3.5">
+                  <div className="flex items-center gap-3.5 min-w-0 flex-1">
                     <div
                       className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${
                         isTransfer
@@ -382,7 +382,7 @@ export default function TransactionsLedger() {
                       )}
                     </div>
 
-                    <div>
+                    <div className="min-w-0 flex-1">
                       {isEditing ? (
                         <div className="space-y-2">
                           <input
@@ -433,13 +433,13 @@ export default function TransactionsLedger() {
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-white">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="text-sm font-semibold text-white truncate">
                               {tx.description || tx.category}
                             </span>
                             {getSourceBadge(tx.source)}
                             {tx.subCategory && (
-                              <span className="rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
+                              <span className="shrink-0 rounded-md bg-slate-800 px-1.5 py-0.5 text-[10px] font-medium text-slate-300">
                                 {tx.subCategory}
                               </span>
                             )}
@@ -453,17 +453,17 @@ export default function TransactionsLedger() {
                             ) : (
                               <>
                                 <span
-                                  className="h-2 w-2 rounded-full"
+                                  className="h-2 w-2 rounded-full shrink-0"
                                   style={{ backgroundColor: meta.color }}
                                 />
                                 <span>{tx.category}</span>
                                 {tx.account ? (
-                                  <span className="inline-flex items-center gap-1 rounded bg-slate-800/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-200 border border-slate-700/60">
+                                  <span className="inline-flex items-center gap-1 rounded bg-slate-800/80 px-1.5 py-0.5 text-[11px] font-medium text-slate-200 border border-slate-700/60 max-w-[140px] truncate">
                                     <span>💳</span>
-                                    <span>{tx.account.name}</span>
+                                    <span className="truncate">{tx.account.name}</span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-300 border border-amber-500/20">
+                                  <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-300 border border-amber-500/20 shrink-0">
                                     <span>💳</span>
                                     <span>Unassigned</span>
                                   </span>
@@ -471,9 +471,9 @@ export default function TransactionsLedger() {
                               </>
                             )}
                             <span>•</span>
-                            <span>{format(new Date(tx.date), "MMM d, yyyy")}</span>
+                            <span className="shrink-0">{format(new Date(tx.date), "MMM d, yyyy")}</span>
                             {tx.tags && (
-                              <span className="text-[10px] text-cyan-400">
+                              <span className="text-[10px] text-cyan-400 font-medium shrink-0">
                                 {tx.tags}
                               </span>
                             )}
@@ -483,9 +483,9 @@ export default function TransactionsLedger() {
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
+                  <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end shrink-0">
                     <span
-                      className={`text-base font-black ${
+                      className={`text-base font-black shrink-0 whitespace-nowrap font-mono ${
                         isTransfer
                           ? "text-indigo-300"
                           : isIncome

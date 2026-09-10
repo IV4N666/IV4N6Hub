@@ -302,9 +302,21 @@ Analyze the user's intent and classify into one of the following:
    - Extract cancelTarget: "TRANSACTION" | "TODO" | "NOTE" | "LAST".
    - Set replyMessage: e.g. "🚫 正在为您取消最近的记录..."
 
+6. "UPDATE_TRANSACTION":
+   - The user is replying with additional details, tags, store name, payment account, or modifications for the transaction JUST discussed or logged in Recent Conversation History!
+   - Examples: "McDonald's #mcd", "#mcd", "是麦当劳", "加个tag #lunch", "用 Touch 'n Go", "是现金付的", "加上备注是请朋友吃", "改一下金额是35".
+   - CRITICAL: If the user is replying to add details, tags, or payment account to a transaction discussed in the conversation, DO NOT set intent to "EXPENSE" (as that creates a duplicate ledger entry). Instead, set intent to "UPDATE_TRANSACTION".
+   - Extract:
+     - description: updated description (e.g. "McDonald's #mcd")
+     - tags: any hashtag or tag mentioned (e.g. "#mcd", "#lunch")
+     - amount: amount (keep previous amount or new corrected amount)
+     - accountId / accountName: matched account if user mentioned one
+     - category: category (best match or keep previous)
+     - replyMessage: e.g. "✅ 已为您补充更新该笔消费：McDonald's #mcd"
+
 Return ONLY a valid JSON conforming to this schema:
 {
-  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL",
+  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL" | "UPDATE_TRANSACTION",
   "cancelTarget": "TRANSACTION" | "TODO" | "NOTE" | "LAST" or null,
   "amount": number (positive float, 0 if not an expense or if missing),
   "type": "EXPENSE" | "INCOME" | "TRANSFER",
@@ -312,6 +324,7 @@ Return ONLY a valid JSON conforming to this schema:
   "description": string,
   "currency": string,
   "date": string,
+  "tags": string or null,
   "accountId": string or null,
   "accountName": string or null,
   "todoTitle": string or null,
@@ -352,10 +365,12 @@ Return ONLY a valid JSON conforming to this schema:
         description: parsed.description || text,
         currency: parsed.currency || defaultCurrency,
         date: parsed.date || today,
+        tags: parsed.tags || undefined,
         confidence: Number(parsed.confidence) || 0.95,
         accountId: matchedAccountId,
         accountName: matchedAccountName,
         intent: parsed.intent || (Number(parsed.amount) > 0 ? "EXPENSE" : "CLARIFICATION"),
+        isUpdate: parsed.intent === "UPDATE_TRANSACTION",
         cancelTarget: parsed.cancelTarget || (parsed.intent === "CANCEL" ? "LAST" : undefined),
         todoTitle: parsed.todoTitle || undefined,
         todoDueDate: parsed.todoDueDate || undefined,
@@ -443,11 +458,14 @@ Analyze the spoken audio and classify user intent:
    - User dictates a note or memo (e.g. 记一下密码是...).
 5. "CANCEL":
    - User speaks to cancel, delete, or undo a recent spend, task, or note (e.g. 取消刚刚的记账, 撤销, 删掉刚才的便签, cancel that).
+6. "UPDATE_TRANSACTION":
+   - User is clarifying, adding details, tags, store name, or payment account to the transaction just discussed or logged in recent conversation history!
+   - Set intent to "UPDATE_TRANSACTION" instead of "EXPENSE".
 
 Extract and return ONLY a JSON object:
 {
   "transcript": string (verbatim speech transcription in original language),
-  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL",
+  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL" | "UPDATE_TRANSACTION",
   "cancelTarget": "TRANSACTION" | "TODO" | "NOTE" | "LAST" or null,
   "amount": number (0 if missing or not an expense),
   "type": "EXPENSE" | "INCOME" | "TRANSFER",
@@ -455,6 +473,7 @@ Extract and return ONLY a JSON object:
   "description": string,
   "currency": string,
   "date": string,
+  "tags": string or null,
   "accountId": string or null,
   "accountName": string or null,
   "todoTitle": string or null,
@@ -502,11 +521,13 @@ Extract and return ONLY a JSON object:
       description: parsed.description || parsed.transcript || "Voice input",
       currency: parsed.currency || defaultCurrency,
       date: parsed.date || today,
+      tags: parsed.tags || undefined,
       confidence: Number(parsed.confidence) || 0.9,
       transcript: parsed.transcript || "",
       accountId: matchedAccountId,
       accountName: matchedAccountName,
       intent: parsed.intent || (Number(parsed.amount) > 0 ? "EXPENSE" : "CLARIFICATION"),
+      isUpdate: parsed.intent === "UPDATE_TRANSACTION",
       cancelTarget: parsed.cancelTarget || (parsed.intent === "CANCEL" ? "LAST" : undefined),
       todoTitle: parsed.todoTitle || undefined,
       todoDueDate: parsed.todoDueDate || undefined,
@@ -788,7 +809,7 @@ function fallbackHeuristicParser(
     }
   }
 
-  // Missing amount check for spending intention
+  // Check for spending verbs
   const isSpendingMention =
     lower.includes("eat") ||
     lower.includes("lunch") ||
@@ -800,6 +821,31 @@ function fallbackHeuristicParser(
     text.includes("吃") ||
     text.includes("买") ||
     text.includes("花了");
+
+  // Check for hashtag or tags
+  const tagMatches = text.match(/#([\w\u4e00-\u9fa5]+)/g);
+  const tagStr = tagMatches ? tagMatches.join(" ") : null;
+
+  // If user is replying with tags or account or details without spending verb or price
+  if (amount === 0 && (tagStr || (matchedAccountId && !isSpendingMention) || text.includes("改") || text.startsWith("加"))) {
+    return {
+      intent: "UPDATE_TRANSACTION",
+      amount: 0,
+      type: "EXPENSE",
+      category: "Other",
+      description: text,
+      tags: tagStr || undefined,
+      currency: defaultCurrency,
+      date: today,
+      confidence: 0.8,
+      accountId: matchedAccountId,
+      accountName: matchedAccountName,
+      isUpdate: true,
+      replyMessage: `✅ 已为您更新记录详情：${text}`,
+    };
+  }
+
+  // Missing amount check for spending intention
 
   if (amount === 0 && isSpendingMention) {
     return {
@@ -916,6 +962,7 @@ function fallbackHeuristicParser(
     description: desc || (isIncome ? "Income" : "Expense"),
     currency,
     date: today,
+    tags: tagStr || undefined,
     confidence: 0.8,
     accountId: matchedAccountId,
     accountName: matchedAccountName,

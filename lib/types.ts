@@ -145,7 +145,8 @@ export type SmartIntentType =
   | "TODO"
   | "NOTE"
   | "CLARIFICATION"
-  | "CANCEL";
+  | "CANCEL"
+  | "UPDATE_TRANSACTION";
 
 export interface ConversationMessage {
   role: "user" | "assistant";
@@ -160,11 +161,13 @@ export interface SmartAIParseResult {
   description: string;
   currency: string;
   date?: string;
+  tags?: string | null;
   accountId?: string | null;
   accountName?: string | null;
   toAccountId?: string | null;
   toAccountName?: string | null;
   confidence: number;
+  isUpdate?: boolean;
   // Todo specific
   todoTitle?: string;
   todoDueDate?: string | null;
@@ -189,12 +192,14 @@ export interface AIParsedExpense {
   description: string;
   currency: string;
   date?: string;
+  tags?: string | null;
   confidence: number;
   reasoning?: string;
   accountId?: string | null;
   accountName?: string | null;
   replyMessage?: string;
   intent?: SmartIntentType;
+  isUpdate?: boolean;
   todoTitle?: string;
   todoDueDate?: string | null;
   todoPriority?: "HIGH" | "MEDIUM" | "LOW";
