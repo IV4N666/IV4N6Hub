@@ -27,13 +27,13 @@ export const PlannerFrogBanner: React.FC<PlannerFrogBannerProps> = ({
 
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-amber-500/20 pb-3 mb-3.5">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 shadow-md shadow-amber-500/25 shrink-0 font-bold">
-            🐸
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500 to-yellow-400 text-slate-950 shadow-md shadow-amber-500/25 shrink-0 font-bold text-base">
+            🎯
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-sm sm:text-base font-extrabold tracking-tight text-white flex items-center gap-1.5">
-                今日三只青蛙 <span className="text-amber-400 text-xs font-semibold">Eat That Frog</span>
+                今日核心焦点 <span className="text-amber-400 text-xs font-semibold">Top 3 Focus</span>
               </h2>
               <span className="inline-flex items-center gap-1 rounded-full bg-amber-400/15 border border-amber-400/30 px-2 py-0.5 text-[10px] font-bold text-amber-300">
                 <Flame className="h-3 w-3 text-amber-400 fill-amber-400" />
@@ -41,7 +41,7 @@ export const PlannerFrogBanner: React.FC<PlannerFrogBannerProps> = ({
               </span>
             </div>
             <p className="text-[11px] text-slate-400 mt-0.5">
-              每天清晨聚焦 3 件最具战略价值的高杠杆事项，优先攻克，击碎拖延。
+              每天清晨聚焦 3 件最具战略价值的高杠杆事项，优先攻克，保持高能。
             </p>
           </div>
         </div>
@@ -66,7 +66,7 @@ export const PlannerFrogBanner: React.FC<PlannerFrogBannerProps> = ({
       {frogs.length === 0 ? (
         <div className="rounded-xl border border-dashed border-amber-500/25 p-4 sm:p-5 text-center bg-amber-500/5">
           <p className="text-xs text-amber-200/80 font-medium">
-            💡 今日尚未选定核心“青蛙任务”。点击下方任意任务卡片的 <span className="font-bold text-amber-300">“🐸 设为青蛙”</span>，将其置顶于今日战略专注区！
+            💡 今日尚未选定核心焦点任务。点击下方任意任务卡片的 <span className="font-bold text-amber-300">“🎯 设为核心焦点”</span>，将其置顶于今日专注区！
           </p>
         </div>
       ) : (
@@ -121,7 +121,7 @@ export const PlannerFrogBanner: React.FC<PlannerFrogBannerProps> = ({
 
                   <button
                     onClick={() => onToggleFrog(task)}
-                    title="移出今日青蛙"
+                    title="移出今日焦点"
                     className="text-amber-400/60 hover:text-rose-400 p-1 rounded-lg hover:bg-slate-800 transition-colors text-xs shrink-0"
                   >
                     ✕

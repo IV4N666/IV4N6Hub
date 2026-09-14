@@ -163,7 +163,7 @@ export const AIReviewModal: React.FC<AIReviewModalProps> = ({
               <div>
                 <h3 className="text-sm font-bold text-white">准备好生成今日的晚间复盘了吗？</h3>
                 <p className="text-xs text-slate-400 mt-1 max-w-sm mx-auto">
-                  AI 将根据今日任务达成度、核心青蛙攻坚情况与习惯打卡，为您提供温暖深刻的反馈与明日规划。
+                  AI 将根据今日任务达成度、核心焦点攻坚情况与习惯打卡，为您提供温暖深刻的反馈与明日规划。
                 </p>
               </div>
               <button

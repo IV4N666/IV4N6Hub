@@ -71,7 +71,7 @@ export const PlannerExportModal: React.FC<PlannerExportModalProps> = ({
   const topTask = tasks.find((t) => t.status === "PENDING" && t.isFrog) || tasks.find((t) => t.status === "PENDING");
   const googleCalendarUrl = topTask
     ? `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(
-        (topTask.isFrog ? "🐸 " : "") + topTask.title
+        (topTask.isFrog ? "🎯 " : "") + topTask.title
       )}&details=${encodeURIComponent(
         topTask.cleanDescription || "IV4N6Hub 计划本任务"
       )}&dates=${todayStr.replace(/-/g, "")}T090000Z/${todayStr.replace(/-/g, "")}T100000Z`
@@ -94,7 +94,7 @@ export const PlannerExportModal: React.FC<PlannerExportModalProps> = ({
                 </span>
               </h2>
               <p className="text-[11px] text-slate-400">
-                如同 Elena Lin 视频中的神仙联动：打通本地笔记知识库与系统原生日程。
+                打通本地笔记知识库与系统原生日程，兼顾深度沉淀与日程通知。
               </p>
             </div>
           </div>
@@ -234,7 +234,7 @@ export const PlannerExportModal: React.FC<PlannerExportModalProps> = ({
                       className="flex items-center justify-between text-[11px] py-1 px-2 rounded-lg bg-slate-900 border border-slate-800/80"
                     >
                       <span className="truncate text-slate-300">
-                        {t.isFrog ? "🐸 " : ""}
+                        {t.isFrog ? "🎯 " : ""}
                         {t.title}
                       </span>
                       <span className="font-mono text-slate-400 shrink-0 ml-2">

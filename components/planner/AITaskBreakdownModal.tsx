@@ -142,7 +142,7 @@ export const AITaskBreakdownModal: React.FC<AITaskBreakdownModalProps> = ({
           <div className="rounded-2xl border border-slate-800 bg-slate-950/80 p-3.5">
             <span className="text-[10px] font-bold text-purple-300">目标任务:</span>
             <h3 className="text-sm font-bold text-white mt-0.5">
-              {task.isFrog ? "🐸 " : ""}
+              {task.isFrog ? "🎯 " : ""}
               {task.title}
             </h3>
             {task.cleanDescription && (
@@ -175,7 +175,7 @@ export const AITaskBreakdownModal: React.FC<AITaskBreakdownModalProps> = ({
             <div className="space-y-3.5">
               {frogReason && (
                 <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 p-2.5 text-xs text-amber-200 flex items-start gap-2">
-                  <span className="text-sm">🐸</span>
+                  <span className="text-sm">🎯</span>
                   <span className="leading-snug">{frogReason}</span>
                 </div>
               )}

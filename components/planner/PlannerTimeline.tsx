@@ -49,7 +49,7 @@ const BLOCK_CONFIGS: Array<{
     icon: Sunrise,
     colorClass: "text-amber-400 border-amber-500/30",
     bgGradient: "from-amber-500/10 via-slate-900/60 to-transparent",
-    tagline: "黄金精力期，吃掉最重要的青蛙，攻坚高认知负荷要务",
+    tagline: "黄金精力期，攻坚最重要的核心要务，推进高认知负荷目标",
   },
   {
     key: "AFTERNOON",
@@ -206,7 +206,7 @@ export const PlannerTimeline: React.FC<PlannerTimelineProps> = ({
                               <div className="flex flex-wrap items-center gap-1.5">
                                 {task.isFrog && (
                                   <span className="rounded bg-amber-500/20 text-amber-300 border border-amber-500/30 px-1.5 py-0.2 text-[10px] font-bold">
-                                    🐸 核心青蛙
+                                    🎯 核心焦点
                                   </span>
                                 )}
                                 <span
@@ -226,17 +226,17 @@ export const PlannerTimeline: React.FC<PlannerTimelineProps> = ({
                             </div>
                           </div>
 
-                          {/* Top Right: Quick Frog Pin */}
+                          {/* Top Right: Quick Focus Pin */}
                           <button
                             onClick={() => onToggleFrog(task)}
-                            title={task.isFrog ? "取消青蛙标记" : "设为今日核心青蛙"}
+                            title={task.isFrog ? "取消核心焦点标记" : "设为今日核心焦点"}
                             className={`p-1.5 rounded-lg transition-colors text-xs shrink-0 ${
                               task.isFrog
                                 ? "bg-amber-500/25 text-amber-300 border border-amber-500/40"
                                 : "text-slate-400 hover:text-amber-300 hover:bg-slate-800"
                             }`}
                           >
-                            🐸
+                            🎯
                           </button>
                         </div>
 

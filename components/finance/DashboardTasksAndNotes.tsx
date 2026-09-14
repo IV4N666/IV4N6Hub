@@ -134,7 +134,7 @@ export const DashboardTasksAndNotes: React.FC = () => {
               </h3>
               {frogCount > 0 && (
                 <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-300 border border-amber-500/30">
-                  🐸 {frogCount} 青蛙待办
+                  🎯 {frogCount} 核心焦点
                 </span>
               )}
             </div>
@@ -252,7 +252,7 @@ export const DashboardTasksAndNotes: React.FC = () => {
                       <div className="flex items-center gap-1.5 truncate">
                         {todo.isFrog && (
                           <span className="text-[10px] rounded bg-amber-500/20 text-amber-300 px-1 py-0.2 font-bold shrink-0">
-                            🐸
+                            🎯
                           </span>
                         )}
                         <p

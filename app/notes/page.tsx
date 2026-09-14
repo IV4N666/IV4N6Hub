@@ -502,12 +502,9 @@ export default function NotesAndTasksPage() {
                 <h1 className="text-xl sm:text-2xl font-black tracking-tight text-white">
                   智能电子计划本
                 </h1>
-                <span className="hidden sm:inline-flex rounded-full bg-gradient-to-r from-amber-500/20 to-purple-500/20 border border-amber-500/30 px-2 py-0.5 text-[10px] font-extrabold text-amber-300">
-                  ✨ Elena Lin AI 灵感版
-                </span>
               </div>
               <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                今日三只青蛙、时间块排程、微习惯打卡与 Obsidian/日历神仙联动。
+                今日核心焦点、时间块排程、微习惯打卡与 Obsidian/日历联动。
               </p>
             </div>
           </div>
@@ -694,7 +691,7 @@ export default function NotesAndTasksPage() {
                 <span>📅 添加新计划</span>
                 {newTodoIsFrog && (
                   <span className="text-[10px] rounded-full bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5">
-                    🐸 今日青蛙
+                    🎯 核心焦点
                   </span>
                 )}
               </h3>
@@ -789,7 +786,7 @@ export default function NotesAndTasksPage() {
                     onChange={(e) => setNewTodoIsFrog(e.target.checked)}
                     className="rounded border-amber-500 text-amber-500 focus:ring-amber-500 h-4 w-4 bg-slate-950"
                   />
-                  <span>🐸 设为今日三只青蛙之一 (核心焦点)</span>
+                  <span>🎯 设为今日核心焦点 (Top 3 Focus)</span>
                 </label>
               </div>
 
@@ -813,7 +810,7 @@ export default function NotesAndTasksPage() {
         </div>
       )}
 
-      {/* TAB 1: PLANNER MODE (Elena Lin AI Digital Planner) */}
+      {/* TAB 1: PLANNER MODE (AI Digital Planner) */}
       {activeTab === "PLANNER" && (
         <div className="space-y-6">
           {/* Top 3 Frogs Focus Banner */}
@@ -899,7 +896,7 @@ export default function NotesAndTasksPage() {
                             isCompleted ? "line-through text-slate-500" : "text-white"
                           }`}
                         >
-                          {task.isFrog ? "🐸 " : ""}
+                          {task.isFrog ? "🎯 " : ""}
                           {task.title}
                         </span>
 

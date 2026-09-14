@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
       if (apiKey) {
         try {
           const genAI = new GoogleGenerativeAI(apiKey);
-          const prompt = `你是一位专业的高效能个人计划导师（精通电子计划本、GTD时间管理、青蛙法则与微步执行）。
+          const prompt = `你是一位专业的高效能个人计划导师（精通电子计划本、GTD时间管理、核心焦点法则与微步执行）。
 请针对用户的任务目标：“${taskTitle}” ${taskDescription ? `(备注: ${taskDescription})` : ""}，将其拆解为 3 至 5 个具体、即刻可执行的微小行动步骤 (Subtasks)。
 
 每个步骤需满足：
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 {
   "suggestedTimeBlock": "MORNING" | "AFTERNOON" | "EVENING",
   "totalEstimatedMinutes": number,
-  "frogReason": string (为什么这项任务重要/是否适合设为今日青蛙任务的简短一句话理由),
+  "frogReason": string (为什么这项任务重要/是否适合设为今日核心焦点任务的简短一句话理由),
   "subtasks": [
     {
       "text": string (步骤简短标题),
@@ -144,11 +144,11 @@ export async function POST(request: NextRequest) {
             estimatedMinutes: t.estimatedMinutes,
           }));
 
-          const prompt = `你是一位顶尖的日程管理专家（如 Elena Lin 的高效电子手帐排程法）。
-请根据人类大脑精力周期规律（早间专注做难事/青蛙、午后做沟通与事务型推进、晚间整理复盘或阅读反思），为以下待办任务智能分配最佳时间块：
+          const prompt = `你是一位顶尖的高效日程管理专家。
+请根据人类大脑精力周期规律（早间专注做难事与核心焦点、午后做沟通与事务型推进、晚间整理复盘或阅读反思），为以下待办任务智能分配最佳时间块：
 
 时间块选项：
-- "MORNING" (08:00 - 12:00, 黄金精力期：高难度、今日三只青蛙、深度思考)
+- "MORNING" (08:00 - 12:00, 黄金精力期：高难度、今日核心焦点、深度思考)
 - "AFTERNOON" (12:00 - 18:00, 协同推进期：会议、对接、常规工作、多步骤任务)
 - "EVENING" (18:00 - 22:00, 晚间复盘期：学习充电、生活整理、复盘反思)
 - "ANYTIME" (灵活备选池)
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
 任务列表：
 ${JSON.stringify(taskSummaries, null, 2)}
 
-请务必从中挑选出最重要、影响最大的 1-3 个任务设为青蛙任务 (isFrog: true)。
+请务必从中挑选出最重要、影响最大的 1-3 个任务设为核心焦点任务 (isFrog: true)。
 请严格返回纯 JSON 格式：
 {
   "daySummary": string (一句话今日节奏建议，如“上午攻坚报表，下午协同沟通，节奏明快轻盈”),
@@ -231,8 +231,8 @@ ${JSON.stringify(taskSummaries, null, 2)}
       if (apiKey) {
         try {
           const genAI = new GoogleGenerativeAI(apiKey);
-          const prompt = `你是一位温柔、深刻而富有洞察力的个人手账计划本私教（如同 Elena Lin 视频中的晚间复盘指引）。
-请对用户今天的完成情况进行全面晚间复盘：
+          const prompt = `你是一位温柔、深刻而富有洞察力的个人计划本私教。
+请根据用户今天的任务完成情况与习惯打卡数据，生成一段走心、温暖且具有指导意义的晚间复盘总结。
 
 【今日已完成事项 (${completed.length}项)】:
 ${completed.map((t) => `- [已完成] ${t.title} (耗时约${t.estimatedMinutes}分钟)`).join("\n") || "今日尚无已勾选事项"}
@@ -270,7 +270,7 @@ ${userNotes || "无特别随笔"}
             reflectionText:
               parsed.reflectionText ||
               "今天你付出了宝贵的时间与专注。无论完成多少，行动本身就是最大的胜利。今晚请好好放松蓄力，明天又是充满无限可能的一天！",
-            tomorrowAdvice: parsed.tomorrowAdvice || "建议明天早晨先吃掉最重要的那只青蛙任务，保持轻盈心态。",
+            tomorrowAdvice: parsed.tomorrowAdvice || "建议明天早晨先攻坚最重要的核心焦点任务，保持轻盈从容心态。",
             rolloverTaskIds: parsed.rolloverTaskIds || pending.slice(0, 3).map((t) => t.id),
           });
         } catch (aiErr: any) {
