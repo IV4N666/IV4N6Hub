@@ -238,20 +238,24 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // 4. Handle Financial Transaction Intent (EXPENSE / INCOME / TRANSFER / UPDATE_TRANSACTION)
+    const isUpdateIntent = parsedResult.intent === "UPDATE_TRANSACTION" || Boolean(parsedResult.isUpdate);
+
     // 3. Handle Clarification / Incomplete info Intent
-    if (parsedResult.intent === "CLARIFICATION" || (parsedResult.amount === 0 && parsedResult.isMissingDetails)) {
+    if (
+      parsedResult.intent === "CLARIFICATION" ||
+      parsedResult.isMissingDetails ||
+      (parsedResult.amount === 0 && !isUpdateIntent)
+    ) {
       return NextResponse.json({
         success: true,
         intent: "CLARIFICATION",
         parsed: parsedResult,
         message:
           parsedResult.replyMessage ||
-          "请问一共消费了多少钱呢？请告诉我具体金额以及付款账户（如现金或银行卡）。",
+          "请问一共消费了多少钱呢？请告诉我具体金额以及付款账户（如现金、Maybank或Touch 'n Go）。",
       });
     }
-
-    // 4. Handle Financial Transaction Intent (EXPENSE / INCOME / TRANSFER / UPDATE_TRANSACTION)
-    const isUpdateIntent = parsedResult.intent === "UPDATE_TRANSACTION" || parsedResult.isUpdate;
 
     // Check for recent transaction (within 15 minutes) to detect replies with more details or enrichment
     const recentTx = await db.transaction.findFirst({
@@ -450,9 +454,23 @@ export async function POST(request: NextRequest) {
     });
   } catch (error: any) {
     console.error("Error in AI expense parser API:", error);
-    return NextResponse.json(
-      { success: false, error: error.message || "Failed to process input with AI" },
-      { status: 500 }
-    );
+    return NextResponse.json({
+      success: true,
+      intent: "CLARIFICATION",
+      parsed: {
+        amount: 0,
+        type: "EXPENSE",
+        category: "Other",
+        description: "Input unclear",
+        currency: "MYR",
+        date: new Date().toISOString().split("T")[0],
+        confidence: 0.2,
+        isMissingDetails: true,
+        replyMessage:
+          "刚才网络分析稍有延迟或声音未能听清。🎤 请问这笔消费是多少钱、在哪消费的？或者要记录什么事项？请补充打字或重新说一遍，我立即为您记下！😊",
+      },
+      message:
+        "刚才网络分析稍有延迟或声音未能听清。🎤 请问这笔消费是多少钱、在哪消费的？或者要记录什么事项？请补充打字或重新说一遍，我立即为您记下！😊",
+    });
   }
 }

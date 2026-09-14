@@ -242,8 +242,8 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           id: String(Date.now() + 1),
           sender: "bot",
           type: "text",
-          text: `❌ Error processing voice note: ${err.message || "Network error"}`,
-          uploadStatus: "ERROR",
+          text: `抱歉，刚才的语音分析遇到了网络延迟或超时。🎤 请问您具体消费了多少钱，或者要记录什么事项？您可以直接打字告诉我哦！`,
+          uploadStatus: "CLARIFICATION",
           timestamp: now,
         },
       ]);
@@ -302,8 +302,8 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           id: String(Date.now() + 1),
           sender: "bot",
           type: "text",
-          text: `❌ Server error: ${err.message || "Failed to contact AI"}`,
-          uploadStatus: "ERROR",
+          text: `抱歉，刚才连接 AI 稍有延迟。请问您这笔消费是多少钱？是用现金还是银行卡支付的呢？请直接告诉我！`,
+          uploadStatus: "CLARIFICATION",
           timestamp: now,
         },
       ]);
@@ -537,8 +537,8 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           id: String(Date.now() + 1),
           sender: "bot",
           type: "text",
-          text: `⚠️ ${data.error || "Could not process request."}`,
-          uploadStatus: "ERROR",
+          text: data.message || `抱歉，刚才识别遇到一点困难。🎤 请问您具体消费了多少钱、在哪消费的？请补充告诉我，我立即为您记下！`,
+          uploadStatus: "CLARIFICATION",
           timestamp,
         },
       ]);
@@ -984,8 +984,15 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                         </div>
                       )}
 
-                      <div className="mt-1 flex items-center justify-end text-[10px] text-slate-400">
-                        <span>{msg.timestamp}</span>
+                      <div className="pt-1 flex items-center justify-between gap-2 flex-wrap">
+                        <button
+                          onClick={() => handleOpenManualSave(msg.transcript || "", "Food & Dining")}
+                          className="flex items-center gap-1 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 px-2.5 py-1 text-[10px] font-bold text-amber-200 transition-all shrink-0 cursor-pointer"
+                        >
+                          <Plus className="h-3 w-3" />
+                          <span>补充具体金额 / 账户</span>
+                        </button>
+                        <span className="text-[10px] text-slate-500 ml-auto">{msg.timestamp}</span>
                       </div>
                     </div>
                   )}

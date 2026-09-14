@@ -171,46 +171,64 @@ export async function generateContentWithFallback(
 ) {
   const resolvedModel = await resolveWorkingModel(apiKey);
 
-  // Active models trial queue, strictly omitting any deprecated models
-  const trialQueue = [
+  // Active models trial queue (limit to top 2 fastest models to avoid long cascading delays)
+  const fullQueue = [
     resolvedModel,
     ...CANDIDATE_MODELS.filter((m) => m !== resolvedModel),
   ].filter((m) => !isModelDeprecated(m));
+  const trialQueue = fullQueue.slice(0, 2);
 
   let lastError: any = null;
 
   for (const modelName of trialQueue) {
     try {
+      const mergedConfig = {
+        ...generationConfig,
+        maxOutputTokens: generationConfig?.maxOutputTokens || 800,
+      };
+
       const model = genAI.getGenerativeModel({
         model: modelName,
-        generationConfig,
+        generationConfig: mergedConfig,
       });
 
-      const result = await model.generateContent(contents);
+      // Strict 6.5-second timeout per model attempt to prevent hanging
+      const timeoutPromise = new Promise((_, reject) => {
+        const timer = setTimeout(() => {
+          reject(new Error(`Timeout: Gemini model '${modelName}' took more than 6.5s to reply`));
+        }, 6500);
+        (timer as any).unref?.();
+      });
+
+      const result = (await Promise.race([
+        model.generateContent(contents),
+        timeoutPromise,
+      ])) as any;
 
       // Successfully processed! Cache this model as working
       modelCache.set(apiKey, { model: modelName, timestamp: Date.now() });
-      (result as any).model = modelName;
+      result.model = modelName;
       return result;
     } catch (err: any) {
       lastError = err;
       const errMsg = (err?.message || String(err)).toLowerCase();
 
-      // Check if this error is 404 / model not found / unsupported
-      const isModelNotFoundError =
+      // Check if this error is timeout, 404 / model not found / unsupported
+      const isRetryableError =
+        errMsg.includes("timeout") ||
         errMsg.includes("404") ||
         errMsg.includes("not found") ||
         errMsg.includes("is not supported for generatecontent") ||
         errMsg.includes("models/");
 
-      if (isModelNotFoundError) {
+      if (isRetryableError) {
         console.warn(
-          `[Gemini Fallback] Model '${modelName}' not available (404/unsupported), trying next candidate...`
+          `[Gemini Fallback] Model '${modelName}' delayed/unavailable (${errMsg}), quickly trying next candidate...`
         );
         continue;
       }
 
-      // Rethrow quota, permission, safety or parsing errors immediately
+      // Rethrow quota, permission or safety errors immediately
       throw err;
     }
   }
@@ -218,7 +236,7 @@ export async function generateContentWithFallback(
   const detailedError = new Error(
     `Failed to generate content: None of the candidate Gemini models (${trialQueue.join(
       ", "
-    )}) were accessible. Original error: ${lastError?.message || lastError}`
+    )}) replied in time. Original error: ${lastError?.message || lastError}`
   );
   (detailedError as any).originalError = lastError;
   throw detailedError;
@@ -450,8 +468,13 @@ Analyze the spoken audio and classify user intent:
 1. "EXPENSE" / "INCOME" / "TRANSFER":
    - Spoken transaction. Convert spoken numbers (二十五 -> 25, 五十 -> 50, 一百 -> 100, 十五块半 -> 15.50, 块/令吉 -> currency).
    - Match spoken payment account against Available Accounts if mentioned (e.g. 现金, Maybank, 银行卡, touch n go).
-2. "CLARIFICATION":
-   - User spoke about buying or eating something, but did not say any price. Ask follow-up question.
+2. "CLARIFICATION" (When speech is unclear, faint, noisy, or details are missing):
+   - CRITICAL: If the audio is faint, noisy, inaudible, silent, static, or speech is hard to detect:
+     * Set intent to "CLARIFICATION", transcript to "[语音不够清晰/杂音较多]", isMissingDetails to true.
+     * Set replyMessage to "抱歉，刚才的语音杂音较多或没能完全听清。🎤 请问您想记录多少金额的消费，或者需要提醒什么待办事项呢？请补充告诉我哦！".
+   - If user spoke about buying/eating something but did not say any price:
+     * Set intent to "CLARIFICATION", isMissingDetails to true, missingFields to ["amount"].
+     * Set replyMessage to "请问一共消费了多少钱呢？请告诉我具体金额以及付款账户（如现金、Maybank或Touch 'n Go）。".
 3. "TODO":
    - User asks to be reminded of something or records a task (e.g. 提醒我明天买菜).
 4. "NOTE":
@@ -503,6 +526,34 @@ Extract and return ONLY a JSON object:
     const responseText = cleanJsonText(result.response.text());
     const parsed = JSON.parse(responseText);
 
+    // Check for unclear or hard-to-detect audio transcript
+    const isUnclearSpeech =
+      !parsed.transcript ||
+      parsed.transcript.trim() === "" ||
+      parsed.transcript.includes("inaudible") ||
+      parsed.transcript.includes("unclear") ||
+      parsed.transcript.includes("杂音") ||
+      (Number(parsed.confidence) < 0.45 && Number(parsed.amount) === 0);
+
+    if (isUnclearSpeech && parsed.intent !== "CANCEL" && !parsed.todoTitle && !parsed.noteTitle) {
+      return {
+        amount: 0,
+        type: "EXPENSE",
+        category: "Other",
+        description: "Voice input (Unclear)",
+        currency: defaultCurrency,
+        date: today,
+        confidence: 0.3,
+        transcript: parsed.transcript || "[语音不够清晰/杂音较多]",
+        intent: "CLARIFICATION",
+        isMissingDetails: true,
+        missingFields: ["amount", "description"],
+        replyMessage:
+          parsed.replyMessage ||
+          "抱歉，刚才的语音稍微有点不太清楚或杂音较多，没能完全听清。🎤 请问您想记录多少金额的消费，或者需要提醒什么待办事项呢？请补充打字或重新说一遍哦！",
+      };
+    }
+
     let matchedAccountId = parsed.accountId || null;
     let matchedAccountName = parsed.accountName || null;
     if (matchedAccountId) {
@@ -540,8 +591,22 @@ Extract and return ONLY a JSON object:
       replyMessage: parsed.replyMessage || (parsed.transcript ? `🎙️ 听取内容: "${parsed.transcript}"` : "已处理语音。"),
     };
   } catch (err: any) {
-    console.error("Gemini Audio error:", err);
-    throw new Error(`Failed to process voice note with AI: ${err.message || err}`);
+    console.warn("Gemini Audio error or timeout, gracefully asking user for details:", err);
+    return {
+      amount: 0,
+      type: "EXPENSE",
+      category: "Other",
+      description: "Voice input (Delayed/Unclear)",
+      currency: defaultCurrency,
+      date: getTodayDateString(),
+      confidence: 0.2,
+      transcript: "[语音识别超时或声音不清晰]",
+      intent: "CLARIFICATION",
+      isMissingDetails: true,
+      missingFields: ["amount", "description"],
+      replyMessage:
+        "抱歉，刚才语音分析稍有延迟或声音没能听清。🎤 请问这笔消费是多少钱、在哪消费的？或者您需要记录什么待办？请补充打字或重新说一遍，我立即为您记下！😊",
+    };
   }
 }
 // Vision OCR Receipt & Invoice Scanner
@@ -954,6 +1019,26 @@ function fallbackHeuristicParser(
   let desc = text.trim();
   if (desc.length > 50) desc = desc.substring(0, 47) + "...";
 
+  if (amount === 0 && !isIncome) {
+    return {
+      intent: "CLARIFICATION",
+      amount: 0,
+      type: "EXPENSE",
+      category,
+      description: desc || "Unspecified expense",
+      currency,
+      date: today,
+      tags: tagStr || undefined,
+      confidence: 0.6,
+      accountId: matchedAccountId,
+      accountName: matchedAccountName,
+      isMissingDetails: true,
+      missingFields: ["amount"],
+      replyMessage:
+        "请问一共消费了多少钱呢？是在哪里消费的？（例如：晚餐 35 现金，或 #mcd 37.75），请告诉我具体金额，我马上帮您记下！😊",
+    };
+  }
+
   return {
     intent: isIncome ? "INCOME" : "EXPENSE",
     amount,
@@ -966,8 +1051,11 @@ function fallbackHeuristicParser(
     confidence: 0.8,
     accountId: matchedAccountId,
     accountName: matchedAccountName,
-    replyMessage: amount > 0
-      ? `✅ 已记录 ${currency} ${amount.toFixed(2)} (${category})${matchedAccountName ? `，付款账户: ${matchedAccountName}` : ""}`
-      : "未检测到明确金额或内容。",
+    replyMessage:
+      amount > 0
+        ? `✅ 已记录 ${currency} ${amount.toFixed(2)} (${category})${
+            matchedAccountName ? `，付款账户: ${matchedAccountName}` : ""
+          }`
+        : "请问具体消费了多少钱？请告诉我具体金额，我立即帮您记录！",
   };
 }
