@@ -261,7 +261,7 @@
 | :--- | :---: | :---: | :--- |
 | `ADMIN_PASSWORD` | string | **是** | 单人访问主密码 (例如: `admin888` 或自定义强密码) |
 | `AUTH_SECRET` | string | **是** | 32位以上随机密钥，用于签名 Session Cookie |
-| `DATABASE_URL` | string | **是** | Supabase 数据库连接池串 (必须使用 `Session pooler` 端口 5432) |
+| `DATABASE_URL` | string | **是** | Supabase 数据库连接池串 (Vercel 生产环境必须使用 `Transaction pooler` 端口 6543) |
 | `GEMINI_API_KEY` | string | 否 | Google Gemini AI 密钥 (用于小票识图与语音转录) |
 | `WHATSAPP_VERIFY_TOKEN` | string | 否 | Meta Webhook 握手暗号 (默认 `omnihub_secret_verify_token`) |
 | `ALLOWED_PHONE_NUMBERS` | string | 否 | 允许发消息记账的手机号白名单 (如 `+60123456789,+6598765432`) |
@@ -270,14 +270,15 @@
 
 ## 8. 上线部署指南与实战排错要点
 
-### 🌟 最佳实践连接配置 (Supabase Session Pooler)
-* 在 Supabase 连接设置中选择 **`Session pooler`**，格式为：
+### 🌟 最佳实践连接配置 (Vercel + Supabase Serverless)
+* **Vercel 生产环境变量 `DATABASE_URL`** 必须选择 **`Transaction pooler (端口 6543)`**，格式为：
   ```text
-  postgresql://postgres.[YOUR-PROJECT-REF]:[YOUR-PASSWORD]@[YOUR-REGION].pooler.supabase.com:5432/postgres
+  postgresql://postgres.[YOUR-PROJECT-REF]:[YOUR-PASSWORD]@aws-0-[YOUR-REGION].pooler.supabase.com:6543/postgres?pgbouncer=true&connection_limit=1
   ```
-* **排错要点**：
-  1. 避免使用 `db.xxx.supabase.co:5432` 直连（在很多 IPv4 家用宽带下会报 `P1001: Can't reach`）。
-  2. 避免在执行 `npx prisma db push` 建表时使用 `6543` 端口（PgBouncer Transaction 模式会挂起 DDL 锁）。使用 `pooler.supabase.com:5432` 兼具 IPv4 连通性与 DDL 建表支持，最顺畅。
+* **排错与原理要点**：
+  1. **防止连接数爆满 (`EMAXCONNSESSION`)**：若在 Vercel 上使用 `5432` 端口（Session 模式），每个 Serverless Lambda 容器都会占用一个独立的长连接，在并发或多次调用后会迅速耗尽 Supabase 的 15 个连接限额，触发 `FATAL: (EMAXCONNSESSION) max clients reached in session mode`。
+  2. **切换为 6543 端口 (Transaction 模式)**：查询完成后立即归还连接池，支持数千并发请求，且增加 `&connection_limit=1` 可限制每个 Lambda 实例最多开 1 个连接，彻底杜绝连接溢出。
+  3. **DDL 建表注意事项**：在本地执行 `npx prisma db push` 或新建表时，需要用到 Session 模式（端口 `5432`）以获取 Advisory Lock 锁。因此建表在本地用 5432，线上 Vercel 运行用 6543，分工明确。
 
 ---
 
