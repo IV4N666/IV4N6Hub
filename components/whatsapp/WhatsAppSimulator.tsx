@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Mic,
@@ -172,6 +172,9 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   const isCancelledRef = useRef<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  // Always-current ref so callbacks read latest messages without stale closure
+  const messagesRef = useRef<ChatMessage[]>(messages);
+  useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
     chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -284,7 +287,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       },
     ]);
 
-    const historyPayload = messages.slice(-6).map((m) => ({
+    const historyPayload = messagesRef.current.slice(-6).map((m) => ({
       role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
       text: m.transcript ? `${m.text} (${m.transcript})` : m.text,
     }));
@@ -432,7 +435,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     }
   };
 
-  const handleBatchImportMissing = async (msgId: string, items: any[]) => {
+  const handleBatchImportMissing = useCallback(async (msgId: string, items: any[]) => {
     if (!items || items.length === 0 || isBatchImporting) return;
     setIsBatchImporting(msgId);
     try {
@@ -490,9 +493,9 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     } finally {
       setIsBatchImporting(null);
     }
-  };
+  }, [isBatchImporting, onExpenseLogged]);
 
-  const handleImportSingleMissing = async (msgId: string, item: any, itemIndex: number) => {
+  const handleImportSingleMissing = useCallback(async (msgId: string, item: any, itemIndex: number) => {
     try {
       const res = await fetch("/api/ai/reconcile", {
         method: "POST",
@@ -527,9 +530,9 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     } catch (e) {
       console.error("Single import error:", e);
     }
-  };
+  }, [onExpenseLogged]);
 
-  const handleApplyDiscrepancy = async (
+  const handleApplyDiscrepancy = useCallback(async (
     msgId: string,
     discIndex: number,
     discrepancy: any
@@ -581,7 +584,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     } finally {
       setIsSyncingDiscrepancy(null);
     }
-  };
+  }, [isSyncingDiscrepancy, onExpenseLogged]);
 
   const handleSendText = async (textToSend?: string) => {
     const text = (textToSend || inputMessage).trim();
@@ -703,7 +706,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       },
     ]);
 
-    const historyPayload = messages.slice(-6).map((m) => ({
+    const historyPayload = messagesRef.current.slice(-6).map((m) => ({
       role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
       text: m.text,
     }));
@@ -740,7 +743,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     }
   };
 
-  const handleCancelItem = async (
+  const handleCancelItem = useCallback(async (
     msgId: string,
     type: "TRANSACTION" | "TODO" | "NOTE",
     targetId?: string
@@ -781,7 +784,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     } finally {
       setCancellingId(null);
     }
-  };
+  }, [cancellingId, onExpenseLogged]);
 
   const handleApiResponse = (data: any, timestamp: string) => {
     setIsProcessing(false);

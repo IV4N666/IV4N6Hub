@@ -91,8 +91,18 @@ export const CANDIDATE_MODELS = [
   "gemini-2.5-pro",
 ];
 
-// In-memory cache for the resolved model per API key (1 hour TTL)
+// In-memory cache for the resolved model per API key (1 hour TTL, max 50 keys)
+const MODEL_CACHE_MAX = 50;
 const modelCache = new Map<string, { model: string; timestamp: number }>();
+
+function setCachedModel(apiKey: string, model: string) {
+  if (modelCache.size >= MODEL_CACHE_MAX) {
+    // Evict the oldest entry (Map preserves insertion order)
+    const oldestKey = modelCache.keys().next().value;
+    if (oldestKey !== undefined) modelCache.delete(oldestKey);
+  }
+  modelCache.set(apiKey, { model, timestamp: Date.now() });
+}
 
 /**
  * Dynamically resolves the best supported Gemini model for the given API key.
@@ -127,7 +137,7 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
         // 1. Match against prioritized candidate models
         for (const candidate of CANDIDATE_MODELS) {
           if (availableModels.includes(candidate)) {
-            modelCache.set(apiKey, { model: candidate, timestamp: Date.now() });
+            setCachedModel(apiKey, candidate);
             console.log(`[Gemini] Discovered available model from API: ${candidate}`);
             return candidate;
           }
@@ -136,14 +146,14 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
         // 2. Try any available active flash model (excluding deprecated)
         const anyFlash = availableModels.find((m) => m.toLowerCase().includes("flash"));
         if (anyFlash) {
-          modelCache.set(apiKey, { model: anyFlash, timestamp: Date.now() });
+          setCachedModel(apiKey, anyFlash);
           console.log(`[Gemini] Selected available flash model: ${anyFlash}`);
           return anyFlash;
         }
 
         // 3. Fallback to any active non-deprecated model that supports generateContent
         if (availableModels.length > 0) {
-          modelCache.set(apiKey, { model: availableModels[0], timestamp: Date.now() });
+          setCachedModel(apiKey, availableModels[0]);
           console.log(`[Gemini] Falling back to available model: ${availableModels[0]}`);
           return availableModels[0];
         }
@@ -209,7 +219,7 @@ export async function generateContentWithFallback(
       ])) as any;
 
       // Successfully processed! Cache this model as working
-      modelCache.set(apiKey, { model: modelName, timestamp: Date.now() });
+      setCachedModel(apiKey, modelName);
       result.model = modelName;
       return result;
     } catch (err: any) {

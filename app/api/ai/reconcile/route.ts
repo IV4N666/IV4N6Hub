@@ -23,8 +23,8 @@ function areDescriptionsSimilar(descA: string, descB: string): boolean {
   if (!a || !b) return false;
   if (a.includes(b) || b.includes(a)) return true;
 
-  // Split tokens (min 3 chars)
-  const tokensA = (descA || "").toLowerCase().split(/\s+/).filter((t) => t.length >= 3);
+  // Split the already-cleaned `a` string to avoid re-processing descA
+  const tokensA = a.split(/\s+/).filter((t) => t.length >= 3);
   for (const token of tokensA) {
     if (b.includes(token)) return true;
   }
@@ -36,6 +36,15 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     const { action = "ANALYZE" } = body;
 
+    // Hoist appConfig fetch once — reused by ANALYZE and RESOLVE_CLARIFICATION
+    let userApiKey: string | undefined;
+    try {
+      const config = await db.appConfig.findUnique({ where: { id: "default" } });
+      if (config?.geminiApiKey) userApiKey = config.geminiApiKey;
+    } catch (e) {
+      console.warn("Could not fetch appConfig for geminiApiKey:", e);
+    }
+
     // 1. ANALYZE: Parse statement via Gemini and cross-reference with DB
     if (action === "ANALYZE") {
       const { fileBase64, mimeType = "application/pdf", accountId, currency = "MYR" } = body;
@@ -45,15 +54,6 @@ export async function POST(request: NextRequest) {
           { success: false, error: "File base64 data is required" },
           { status: 400 }
         );
-      }
-
-      // Fetch user configured Gemini API key if present
-      let userApiKey: string | undefined;
-      try {
-        const config = await db.appConfig.findUnique({ where: { id: "default" } });
-        if (config?.geminiApiKey) userApiKey = config.geminiApiKey;
-      } catch (e) {
-        console.warn("Could not fetch appConfig for geminiApiKey:", e);
       }
 
       // Fetch accounts for prompt context and matching
@@ -272,51 +272,60 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      let importedCount = 0;
-      for (const item of items) {
-        const numAmount = Math.abs(Number(item.amount) || 0);
-        if (numAmount <= 0) continue;
+      // Filter valid items upfront
+      const validItems = items.filter((item: any) => Math.abs(Number(item.amount) || 0) > 0);
 
+      // Phase 1: create all transactions in parallel
+      await Promise.all(
+        validItems.map((item: any) => {
+          const numAmount = Math.abs(Number(item.amount));
+          const txType =
+            item.type === "INCOME" ? "INCOME" : item.type === "TRANSFER" ? "TRANSFER" : "EXPENSE";
+          return db.transaction.create({
+            data: {
+              amount: numAmount,
+              type: txType,
+              category: item.category || "Other",
+              subCategory: item.subCategory || null,
+              description: item.description?.trim() || "Statement Transaction",
+              rawInput: item.rawNarration || item.description || null,
+              source: "AI_STATEMENT",
+              currency: item.currency || "MYR",
+              accountId: item.accountId || accountId || null,
+              date: new Date(item.date || new Date()),
+            },
+          });
+        })
+      );
+
+      // Phase 2: batch balance adjustments grouped by accountId
+      type BalanceDelta = { increment?: number; decrement?: number };
+      const balanceMap = new Map<string, { inc: number; dec: number }>();
+      for (const item of validItems) {
+        const targetId = item.accountId || accountId;
+        if (!targetId) continue;
+        const numAmount = Math.abs(Number(item.amount));
         const txType =
           item.type === "INCOME" ? "INCOME" : item.type === "TRANSFER" ? "TRANSFER" : "EXPENSE";
-
-        await db.transaction.create({
-          data: {
-            amount: numAmount,
-            type: txType,
-            category: item.category || "Other",
-            subCategory: item.subCategory || null,
-            description: item.description?.trim() || "Statement Transaction",
-            rawInput: item.rawNarration || item.description || null,
-            source: "AI_STATEMENT",
-            currency: item.currency || "MYR",
-            accountId: item.accountId || accountId || null,
-            date: new Date(item.date || new Date()),
-          },
-        });
-
-        // Update balance if account provided
-        const targetAccountId = item.accountId || accountId;
-        if (targetAccountId) {
-          if (txType === "EXPENSE") {
-            await db.account.update({
-              where: { id: targetAccountId },
-              data: { balance: { decrement: numAmount } },
-            }).catch(() => {});
-          } else if (txType === "INCOME") {
-            await db.account.update({
-              where: { id: targetAccountId },
-              data: { balance: { increment: numAmount } },
-            }).catch(() => {});
-          }
-        }
-        importedCount++;
+        if (!balanceMap.has(targetId)) balanceMap.set(targetId, { inc: 0, dec: 0 });
+        const entry = balanceMap.get(targetId)!;
+        if (txType === "EXPENSE") entry.dec += numAmount;
+        else if (txType === "INCOME") entry.inc += numAmount;
       }
+
+      await Promise.all(
+        Array.from(balanceMap.entries()).map(([id, { inc, dec }]) => {
+          const netDelta = inc - dec;
+          const data: BalanceDelta =
+            netDelta >= 0 ? { increment: netDelta } : { decrement: -netDelta };
+          return db.account.update({ where: { id }, data: { balance: data } }).catch(() => {});
+        })
+      );
 
       return NextResponse.json({
         success: true,
-        message: `成功批量导入 ${importedCount} 笔账单交易！`,
-        importedCount,
+        message: `成功批量导入 ${validItems.length} 笔账单交易！`,
+        importedCount: validItems.length,
       });
     }
 
@@ -389,14 +398,7 @@ export async function POST(request: NextRequest) {
         );
       }
 
-      // Fetch user configured Gemini API key if present
-      let userApiKey: string | undefined;
-      try {
-        const config = await db.appConfig.findUnique({ where: { id: "default" } });
-        if (config?.geminiApiKey) userApiKey = config.geminiApiKey;
-      } catch {}
-
-      // Analyze user's clarification text with AI
+      // Analyze user's clarification text with AI (userApiKey already resolved at handler top)
       const accounts = await db.account.findMany({
         select: { id: true, name: true, type: true },
       });
