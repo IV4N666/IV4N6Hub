@@ -183,9 +183,10 @@ export async function generateContentWithFallback(
 
   for (const modelName of trialQueue) {
     try {
+      const { timeoutMs: customTimeout, ...cleanConfig } = generationConfig || {};
       const mergedConfig = {
-        ...generationConfig,
-        maxOutputTokens: generationConfig?.maxOutputTokens || 800,
+        ...cleanConfig,
+        maxOutputTokens: cleanConfig?.maxOutputTokens || 800,
       };
 
       const model = genAI.getGenerativeModel({
@@ -194,7 +195,7 @@ export async function generateContentWithFallback(
       });
 
       // Configurable timeout (default 6.5s for fast conversational chat, higher for documents/PDF)
-      const timeoutMs = generationConfig?.timeoutMs || 6500;
+      const timeoutMs = customTimeout || 6500;
       const timeoutPromise = new Promise((_, reject) => {
         const timer = setTimeout(() => {
           reject(new Error(`Timeout: Gemini model '${modelName}' took more than ${timeoutMs / 1000}s to reply`));
