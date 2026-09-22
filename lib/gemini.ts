@@ -29,6 +29,7 @@ const STANDARD_CATEGORIES = [
   "Shopping & Groceries",
   "Bills & Utilities",
   "Entertainment & Leisure",
+  "Gambling & Lottery",
   "Healthcare & Medical",
   "Housing & Rent",
   "Salary & Income",
@@ -192,11 +193,12 @@ export async function generateContentWithFallback(
         generationConfig: mergedConfig,
       });
 
-      // Strict 6.5-second timeout per model attempt to prevent hanging
+      // Configurable timeout (default 6.5s for fast conversational chat, higher for documents/PDF)
+      const timeoutMs = generationConfig?.timeoutMs || 6500;
       const timeoutPromise = new Promise((_, reject) => {
         const timer = setTimeout(() => {
-          reject(new Error(`Timeout: Gemini model '${modelName}' took more than 6.5s to reply`));
-        }, 6500);
+          reject(new Error(`Timeout: Gemini model '${modelName}' took more than ${timeoutMs / 1000}s to reply`));
+        }, timeoutMs);
         (timer as any).unref?.();
       });
 
@@ -292,10 +294,15 @@ ${STANDARD_CATEGORIES.join(", ")}
 Analyze the user's intent and classify into one of the following:
 1. "EXPENSE" / "INCOME" / "TRANSFER":
    - Logging money spent or received.
-   - Extract: amount (number), category (best match), description (concise item/merchant), currency, date (ISO YYYY-MM-DD), and accountId matching one from the Available Accounts if the user mentioned it (e.g. "Cash", "现金", "Maybank", "Bank", "Touch n Go", "TnG", "Credit Card", "刷卡"). If no account was mentioned, leave accountId as null.
-   - Multi-turn understanding: If the Conversation History shows the assistant previously asked for the amount or account (e.g. "How much was lunch?"), combine the previous context with the user's current reply to complete the record!
-   - Language support: Mandarin Chinese (吃午餐25块 / 喝咖啡15.50 / 打油50 / 现金付了30), Cantonese, Malay (makan 12 ringgit), English. Convert spoken/written Chinese numerals (十五块半 -> 15.50, 二十五 -> 25).
-   - Generate a friendly replyMessage (e.g. "✅ 已记录午餐支出 RM 25.00 (现金钱包)" or "✅ Recorded $15.50 for Coffee.").
+    - Extract: amount (number), category (best match), subCategory (if identifiable), description (concise item/merchant), currency, date (ISO YYYY-MM-DD), and accountId matching one from the Available Accounts if the user mentioned it (e.g. "Cash", "现金", "Maybank", "Bank", "Touch n Go", "TnG", "Credit Card", "刷卡"). If no account was mentioned, leave accountId as null.
+    - Specialized Category & SubCategory Mapping Rules:
+      * 汽车汽油费/打油: "打油", "汽油", "车油", "加油", "RON95", "RON97", "Shell", "Petronas", "Caltex", "Petron", "BHPetrol" -> Category: "Transport & Fuel", subCategory: "Petrol & Fuel (汽车汽油/打油)".
+      * 宵夜: "宵夜", "supper", "深夜外卖", "烧烤", "撸串", "lok lok", "深夜糖水" -> Category: "Food & Dining", subCategory: "Supper / Late-Night (宵夜)".
+      * 门票: "门票", "tickets", "电影票", "演唱会门票", "展会入场券", "主题乐园/环球影城门票" -> Category: "Entertainment & Leisure", subCategory: "Tickets & Passes (门票/票券)".
+      * 赌博/彩票: "赌博", "买字", "买万字", "4D", "Toto", "Magnum", "Damacai", "云顶", "Casino", "赌场", "打麻将输赢", "买球", "赌球", "跑马" -> Category: "Gambling & Lottery".
+    - Multi-turn understanding: If the Conversation History shows the assistant previously asked for the amount or account (e.g. "How much was lunch?"), combine the previous context with the user's current reply to complete the record!
+    - Language support: Mandarin Chinese (吃午餐25块 / 喝咖啡15.50 / 打油50 / 现金付了30), Cantonese, Malay (makan 12 ringgit), English. Convert spoken/written Chinese numerals (十五块半 -> 15.50, 二十五 -> 25).
+    - Generate a friendly replyMessage (e.g. "✅ 已记录午餐支出 RM 25.00 (现金钱包)" or "✅ Recorded $15.50 for Coffee.").
 
 2. "CLARIFICATION":
    - The user clearly mentions a spending, purchase, or activity that costs money (e.g. "吃了火锅", "went to Starbucks", "bought new shoes", "paid parking", "吃午餐") BUT DID NOT specify an amount or price.
@@ -380,6 +387,7 @@ Return ONLY a valid JSON conforming to this schema:
         amount: Math.abs(Number(parsed.amount) || 0),
         type: parsed.type === "INCOME" ? "INCOME" : parsed.type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
         category: STANDARD_CATEGORIES.includes(parsed.category) ? parsed.category : "Other",
+        subCategory: parsed.subCategory || null,
         description: parsed.description || text,
         currency: parsed.currency || defaultCurrency,
         date: parsed.date || today,
@@ -468,6 +476,11 @@ Analyze the spoken audio and classify user intent:
 1. "EXPENSE" / "INCOME" / "TRANSFER":
    - Spoken transaction. Convert spoken numbers (二十五 -> 25, 五十 -> 50, 一百 -> 100, 十五块半 -> 15.50, 块/令吉 -> currency).
    - Match spoken payment account against Available Accounts if mentioned (e.g. 现金, Maybank, 银行卡, touch n go).
+   - Specialized Category & SubCategory Mapping Rules:
+     * 汽车汽油费/打油: "打油", "汽油", "车油", "加油", "RON95", "RON97", "Shell", "Petronas", "Caltex", "Petron", "BHPetrol" -> Category: "Transport & Fuel", subCategory: "Petrol & Fuel (汽车汽油/打油)".
+     * 宵夜: "宵夜", "supper", "深夜外卖", "烧烤", "撸串", "lok lok", "深夜糖水" -> Category: "Food & Dining", subCategory: "Supper / Late-Night (宵夜)".
+     * 门票: "门票", "tickets", "电影票", "演唱会门票", "展会入场券", "主题乐园/环球影城门票" -> Category: "Entertainment & Leisure", subCategory: "Tickets & Passes (门票/票券)".
+     * 赌博/彩票: "赌博", "买字", "买万字", "4D", "Toto", "Magnum", "Damacai", "云顶", "Casino", "赌场", "打麻将输赢", "买球", "赌球", "跑马" -> Category: "Gambling & Lottery".
 2. "CLARIFICATION" (When speech is unclear, faint, noisy, or details are missing):
    - CRITICAL: If the audio is faint, noisy, inaudible, silent, static, or speech is hard to detect:
      * Set intent to "CLARIFICATION", transcript to "[语音不够清晰/杂音较多]", isMissingDetails to true.
@@ -1059,3 +1072,143 @@ function fallbackHeuristicParser(
         : "请问具体消费了多少钱？请告诉我具体金额，我立即帮您记录！",
   };
 }
+
+export interface ExtractedStatementTransaction {
+  date: string;
+  amount: number;
+  type: "EXPENSE" | "INCOME" | "TRANSFER";
+  description: string;
+  rawNarration: string;
+  category: string;
+  subCategory?: string;
+  confidence: number;
+  isAmbiguous?: boolean;
+  ambiguityReason?: string;
+}
+
+export interface ExtractedStatement {
+  bankName?: string;
+  accountNumber?: string;
+  statementPeriod?: { start?: string; end?: string };
+  currency: string;
+  totalDebit: number;
+  totalCredit: number;
+  transactions: ExtractedStatementTransaction[];
+}
+
+export async function parseBankStatementWithAI(
+  fileBase64: string,
+  mimeType = "application/pdf",
+  userApiKey?: string,
+  defaultCurrency = "MYR",
+  accounts: SmartAccountInfo[] = []
+): Promise<ExtractedStatement> {
+  const apiKey = userApiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("Google Gemini API Key is required for statement scanning.");
+  }
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const today = getTodayDateString();
+  const accountListStr = accounts.length > 0 ? accounts.map((a) => `- ${a.name} (${a.type || "Account"})`).join("\n") : "None";
+
+  const prompt = `You are an expert financial auditor, accountant, and bank statement parser for IV4N6Hub.
+Analyze the attached bank/credit card/e-wallet statement document (PDF or image).
+Current Reference Date: ${today}
+Default Currency: ${defaultCurrency}
+User's Registered Accounts:
+${accountListStr}
+
+Standard Categories:
+${STANDARD_CATEGORIES.join(", ")}
+
+Specialized Category & SubCategory Mapping Rules:
+- 汽车汽油费/打油: "打油", "汽油", "车油", "加油", "RON95", "RON97", "Shell", "Petronas", "Caltex", "Petron", "BHPetrol" -> Category: "Transport & Fuel", subCategory: "Petrol & Fuel (汽车汽油/打油)".
+- 宵夜: "宵夜", "supper", "深夜外卖", "烧烤", "撸串", "lok lok", "深夜糖水" -> Category: "Food & Dining", subCategory: "Supper / Late-Night (宵夜)".
+- 门票: "门票", "tickets", "电影票", "演唱会门票", "展会入场券", "主题乐园/环球影城门票" -> Category: "Entertainment & Leisure", subCategory: "Tickets & Passes (门票/票券)".
+- 赌博/彩票: "赌博", "买字", "买万字", "4D", "Toto", "Magnum", "Damacai", "云顶", "Casino", "赌场", "打麻将输赢", "买球", "赌球", "跑马" -> Category: "Gambling & Lottery".
+
+Instructions:
+1. Identify the bank name, account number (masked if necessary), statement date range, and currency.
+2. Extract all individual transaction rows faithfully.
+   - For outflows (withdrawals, debits, payments, charges): type = "EXPENSE"
+   - For inflows (deposits, credits, salary, refund): type = "INCOME"
+   - For inter-account transfers: type = "TRANSFER"
+3. Clean the description to be human-readable, while keeping the full verbatim transaction text in rawNarration.
+4. Categorize each transaction into one of the Standard Categories, and provide a subCategory if applicable.
+5. Identify Ambiguous Transactions:
+   - If a transaction is an unlabelled DuitNow / FPX / IBG transfer to a person with unclear purpose, or marked only with an obscure code, set isAmbiguous: true, and set ambiguityReason in Chinese explaining what to ask the user (e.g. "DuitNow 转账给个人，请问是还钱、聚餐分账还是其他开销？").
+   - Otherwise, set isAmbiguous: false.
+
+Return ONLY a valid JSON object matching this schema:
+{
+  "bankName": string,
+  "accountNumber": string,
+  "statementPeriod": { "start": "YYYY-MM-DD", "end": "YYYY-MM-DD" },
+  "currency": string,
+  "totalDebit": number,
+  "totalCredit": number,
+  "transactions": [
+    {
+      "date": "YYYY-MM-DD",
+      "amount": number (positive),
+      "type": "EXPENSE" | "INCOME" | "TRANSFER",
+      "description": string,
+      "rawNarration": string,
+      "category": string,
+      "subCategory": string | null,
+      "confidence": number,
+      "isAmbiguous": boolean,
+      "ambiguityReason": string | null
+    }
+  ]
+}`;
+
+  const cleanMime = (mimeType || "application/pdf").split(";")[0].trim();
+  const filePart = {
+    inlineData: {
+      data: fileBase64,
+      mimeType: cleanMime,
+    },
+  };
+
+  const result = await generateContentWithFallback(genAI, apiKey, [prompt, filePart], {
+    responseMimeType: "application/json",
+    temperature: 0.1,
+    maxOutputTokens: 8000,
+    timeoutMs: 30000, // 30s for PDF extraction
+  });
+
+  const responseText = cleanJsonText(result.response.text());
+  try {
+    const parsed = JSON.parse(responseText);
+    const txs: ExtractedStatementTransaction[] = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(
+      (t: any) => ({
+        date: t.date || today,
+        amount: Math.abs(Number(t.amount) || 0),
+        type: t.type === "INCOME" ? "INCOME" : t.type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
+        description: t.description || t.rawNarration || "Transaction",
+        rawNarration: t.rawNarration || t.description || "",
+        category: STANDARD_CATEGORIES.includes(t.category) ? t.category : "Other",
+        subCategory: t.subCategory || undefined,
+        confidence: Number(t.confidence) || 0.85,
+        isAmbiguous: Boolean(t.isAmbiguous),
+        ambiguityReason: t.ambiguityReason || undefined,
+      })
+    );
+
+    return {
+      bankName: parsed.bankName || "Bank Statement",
+      accountNumber: parsed.accountNumber || undefined,
+      statementPeriod: parsed.statementPeriod || undefined,
+      currency: parsed.currency || defaultCurrency,
+      totalDebit: Number(parsed.totalDebit) || 0,
+      totalCredit: Number(parsed.totalCredit) || 0,
+      transactions: txs,
+    };
+  } catch (err: any) {
+    console.error("Failed to parse statement JSON from Gemini:", responseText);
+    throw new Error(`Failed to parse bank statement: ${err.message}`);
+  }
+}
+

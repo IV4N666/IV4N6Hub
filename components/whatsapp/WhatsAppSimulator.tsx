@@ -22,13 +22,71 @@ import {
   ExternalLink,
   Trash2,
   X,
+  Paperclip,
+  FileText,
+  ChevronDown,
+  ChevronUp,
+  Check,
+  RefreshCw,
+  FileUp,
 } from "lucide-react";
 import { formatCurrency, getCategoryMeta, CATEGORY_DEFINITIONS } from "@/lib/category-meta";
+
+export interface ReconciliationReportData {
+  statement: {
+    bankName?: string;
+    accountNumber?: string;
+    statementPeriod?: { start?: string; end?: string };
+    currency: string;
+    totalDebit: number;
+    totalCredit: number;
+  };
+  summary: {
+    totalStatementTransactions: number;
+    matchedCount: number;
+    discrepancyCount: number;
+    missingCount: number;
+    ambiguousCount: number;
+  };
+  matched: Array<{
+    statementTx: any;
+    dbTx: {
+      id: string;
+      date: string;
+      amount: number;
+      description: string;
+      category: string;
+      subCategory?: string | null;
+      accountName?: string | null;
+    };
+  }>;
+  discrepancies: Array<{
+    statementTx: any;
+    dbTx: {
+      id: string;
+      date: string;
+      amount: number;
+      description: string;
+      category: string;
+      subCategory?: string | null;
+      accountName?: string | null;
+    };
+    difference: number;
+    resolved?: boolean;
+  }>;
+  missing: Array<any & { imported?: boolean }>;
+  ambiguous: Array<any & { resolved?: boolean }>;
+}
 
 interface ChatMessage {
   id: string;
   sender: "user" | "bot";
-  type: "text" | "voice";
+  type: "text" | "voice" | "file";
+  fileInfo?: {
+    name: string;
+    size: string;
+    mimeType: string;
+  };
   text: string;
   transcript?: string;
   intent?: string;
@@ -49,7 +107,17 @@ interface ChatMessage {
     noteTitle?: string;
     noteContent?: string;
   };
-  uploadStatus?: "SAVED" | "NO_AMOUNT" | "ERROR" | "TODO_SAVED" | "NOTE_SAVED" | "CLARIFICATION" | "CANCELLED" | "UPDATED";
+  reconciliationData?: ReconciliationReportData;
+  uploadStatus?:
+    | "SAVED"
+    | "NO_AMOUNT"
+    | "ERROR"
+    | "TODO_SAVED"
+    | "NOTE_SAVED"
+    | "CLARIFICATION"
+    | "CANCELLED"
+    | "UPDATED"
+    | "RECONCILIATION_REPORT";
   timestamp: string;
 }
 
@@ -67,7 +135,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       id: "welcome-1",
       sender: "bot",
       type: "text",
-      text: "👋 Hi! I'm your IV4N6Hub Financial & Life Assistant on WhatsApp.\n\nHere is what you can tell me:\n• 💰 Expense: 'Spent 25 on fuel with cash' or '吃了午餐25块'\n• 📋 Task: 'Remind me to buy groceries tomorrow' or '提醒我明天买菜'\n• 📝 Note: 'Note: door passcode is 8842' or '记一下：门禁密码是8842'\n• 💬 Missing details? Tell me what you did, and I'll follow up with questions!",
+      text: "👋 Hi! I'm your IV4N6Hub Financial & Life Assistant on WhatsApp.\n\nHere is what you can tell me:\n• 💰 Expense: 'Spent 25 on fuel with cash' or '吃了午餐25块'\n• 📎 Bank Statement: Click 📎 to upload bank PDF or screenshot for auto-reconciliation & missing check!\n• 📋 Task: 'Remind me to buy groceries tomorrow' or '提醒我明天买菜'\n• 📝 Note: 'Note: door passcode is 8842' or '记一下：门禁密码是8842'\n• 💬 Missing details? Tell me what you did, and I'll follow up with questions!",
       uploadStatus: "SAVED",
       timestamp: "12:00 PM",
     },
@@ -78,6 +146,17 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   const [recordingDuration, setRecordingDuration] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingStep, setProcessingStep] = useState("Analyzing with Gemini AI...");
+
+  // Statement Reconciliation States
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [expandedMatched, setExpandedMatched] = useState<Record<string, boolean>>({});
+  const [pendingClarification, setPendingClarification] = useState<{
+    msgId: string;
+    itemIndex: number;
+    item: any;
+  } | null>(null);
+  const [isBatchImporting, setIsBatchImporting] = useState<string | null>(null);
+  const [isSyncingDiscrepancy, setIsSyncingDiscrepancy] = useState<string | null>(null);
 
   // Quick Manual Edit Modal if amount not detected
   const [manualModalOpen, setManualModalOpen] = useState(false);
@@ -250,11 +329,362 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
     }
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Clear input so same file can be re-selected
+    e.target.value = "";
+
+    const fileSizeStr =
+      file.size > 1024 * 1024
+        ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
+        : `${Math.round(file.size / 1024)} KB`;
+
+    const now = new Date().toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const userMsgId = String(Date.now());
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: userMsgId,
+        sender: "user",
+        type: "file",
+        fileInfo: {
+          name: file.name,
+          size: fileSizeStr,
+          mimeType: file.type || "application/pdf",
+        },
+        text: `📎 上传账单：${file.name} (${fileSizeStr})`,
+        timestamp: now,
+      },
+    ]);
+
+    setIsProcessing(true);
+    setProcessingStep("Gemini AI 正在深入分析账单流水并核对数据库记录...");
+
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onloadend = async () => {
+        const base64Data = (reader.result as string).split(",")[1];
+        const res = await fetch("/api/ai/reconcile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "ANALYZE",
+            fileBase64: base64Data,
+            mimeType: file.type || "application/pdf",
+            currency,
+          }),
+        });
+
+        const data = await res.json();
+        setIsProcessing(false);
+
+        if (data.success && data.statement) {
+          const s = data.summary;
+          const botReportText = `📊 账单核对完成！为您比对了 ${s.totalStatementTransactions} 笔交易记录：\n🟢 已匹配一致：${s.matchedCount} 笔\n🟡 发现金额差异：${s.discrepancyCount} 笔\n🔵 发现漏记账：${s.missingCount} 笔\n❓ 需向您确认：${s.ambiguousCount} 笔`;
+
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: "bot",
+              type: "text",
+              text: botReportText,
+              uploadStatus: "RECONCILIATION_REPORT",
+              reconciliationData: data,
+              timestamp: now,
+            },
+          ]);
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: "bot",
+              type: "text",
+              text: `⚠️ 账单分析未能识别出交易明细：${data.error || data.message || "请检查文件是否为清晰的银行流水账单或对账单截图。"}`,
+              uploadStatus: "ERROR",
+              timestamp: now,
+            },
+          ]);
+        }
+      };
+    } catch (err: any) {
+      console.error("Statement upload failed:", err);
+      setIsProcessing(false);
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: String(Date.now() + 1),
+          sender: "bot",
+          type: "text",
+          text: `抱歉，账单解析出错：${err.message || "网络请求失败"}`,
+          uploadStatus: "ERROR",
+          timestamp: now,
+        },
+      ]);
+    }
+  };
+
+  const handleBatchImportMissing = async (msgId: string, items: any[]) => {
+    if (!items || items.length === 0 || isBatchImporting) return;
+    setIsBatchImporting(msgId);
+    try {
+      const res = await fetch("/api/ai/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "BATCH_IMPORT",
+          items,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id === msgId && m.reconciliationData) {
+              const updatedMissing = m.reconciliationData.missing.map((item) => ({
+                ...item,
+                imported: true,
+              }));
+              return {
+                ...m,
+                reconciliationData: {
+                  ...m.reconciliationData,
+                  missing: updatedMissing,
+                  summary: {
+                    ...m.reconciliationData.summary,
+                    missingCount: 0,
+                  },
+                },
+              };
+            }
+            return m;
+          })
+        );
+        const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text: `✅ 已成功将 ${items.length} 笔漏记账单交易批量补入账本！您可以在交易明细中查看。`,
+            uploadStatus: "SAVED",
+            timestamp: now,
+          },
+        ]);
+        if (onExpenseLogged) onExpenseLogged();
+      } else {
+        alert(data.error || "Failed to batch import transactions");
+      }
+    } catch (e: any) {
+      console.error("Batch import error:", e);
+      alert("Error importing transactions: " + e.message);
+    } finally {
+      setIsBatchImporting(null);
+    }
+  };
+
+  const handleImportSingleMissing = async (msgId: string, item: any, itemIndex: number) => {
+    try {
+      const res = await fetch("/api/ai/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "BATCH_IMPORT",
+          items: [item],
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id === msgId && m.reconciliationData) {
+              const updatedMissing = [...m.reconciliationData.missing];
+              if (updatedMissing[itemIndex]) {
+                updatedMissing[itemIndex] = { ...updatedMissing[itemIndex], imported: true };
+              }
+              return {
+                ...m,
+                reconciliationData: {
+                  ...m.reconciliationData,
+                  missing: updatedMissing,
+                },
+              };
+            }
+            return m;
+          })
+        );
+        if (onExpenseLogged) onExpenseLogged();
+      }
+    } catch (e) {
+      console.error("Single import error:", e);
+    }
+  };
+
+  const handleApplyDiscrepancy = async (
+    msgId: string,
+    discIndex: number,
+    discrepancy: any
+  ) => {
+    const syncKey = `${msgId}-${discIndex}`;
+    if (isSyncingDiscrepancy) return;
+    setIsSyncingDiscrepancy(syncKey);
+
+    try {
+      const res = await fetch("/api/ai/reconcile", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "APPLY_DISCREPANCY",
+          transactionId: discrepancy.dbTx.id,
+          newAmount: discrepancy.statementTx.amount,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setMessages((prev) =>
+          prev.map((m) => {
+            if (m.id === msgId && m.reconciliationData) {
+              const updatedDiscrepancies = [...m.reconciliationData.discrepancies];
+              if (updatedDiscrepancies[discIndex]) {
+                updatedDiscrepancies[discIndex] = {
+                  ...updatedDiscrepancies[discIndex],
+                  resolved: true,
+                };
+              }
+              return {
+                ...m,
+                reconciliationData: {
+                  ...m.reconciliationData,
+                  discrepancies: updatedDiscrepancies,
+                },
+              };
+            }
+            return m;
+          })
+        );
+        if (onExpenseLogged) onExpenseLogged();
+      } else {
+        alert(data.error || "Failed to update transaction amount");
+      }
+    } catch (e: any) {
+      console.error("Discrepancy sync error:", e);
+      alert("Error syncing amount: " + e.message);
+    } finally {
+      setIsSyncingDiscrepancy(null);
+    }
+  };
+
   const handleSendText = async (textToSend?: string) => {
     const text = (textToSend || inputMessage).trim();
     if (!text || isProcessing) return;
 
     setInputMessage("");
+
+    // Check if user is replying to an ambiguous transaction clarification
+    if (pendingClarification) {
+      const activePending = pendingClarification;
+      setPendingClarification(null);
+      setIsProcessing(true);
+      setProcessingStep("Updating transaction with your clarification...");
+      const now = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: String(Date.now()),
+          sender: "user",
+          type: "text",
+          text: text,
+          timestamp: now,
+        },
+      ]);
+
+      try {
+        const res = await fetch("/api/ai/reconcile", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "RESOLVE_CLARIFICATION",
+            item: activePending.item,
+            userExplanation: text,
+          }),
+        });
+        const data = await res.json();
+        setIsProcessing(false);
+        if (data.success) {
+          // Update the message's ambiguous item as resolved
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id === activePending.msgId && m.reconciliationData) {
+                const newAmbiguous = [...m.reconciliationData.ambiguous];
+                if (newAmbiguous[activePending.itemIndex]) {
+                  newAmbiguous[activePending.itemIndex] = {
+                    ...newAmbiguous[activePending.itemIndex],
+                    resolved: true,
+                  };
+                }
+                return {
+                  ...m,
+                  reconciliationData: {
+                    ...m.reconciliationData,
+                    ambiguous: newAmbiguous,
+                  },
+                };
+              }
+              return m;
+            })
+          );
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: "bot",
+              type: "text",
+              text: data.message || `✅ 已为您将交易记录为：${data.transaction?.description} (RM ${data.transaction?.amount?.toFixed(2)})！`,
+              uploadStatus: "SAVED",
+              timestamp: now,
+            },
+          ]);
+          if (onExpenseLogged) onExpenseLogged();
+        } else {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: "bot",
+              type: "text",
+              text: `保存失败：${data.error || "未知错误"}`,
+              uploadStatus: "ERROR",
+              timestamp: now,
+            },
+          ]);
+        }
+      } catch (err: any) {
+        setIsProcessing(false);
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text: `抱歉，保存说明时出现网络异常：${err.message}`,
+            uploadStatus: "ERROR",
+            timestamp: now,
+          },
+        ]);
+      }
+      return;
+    }
+
     setIsProcessing(true);
     setProcessingStep("Analyzing message with Gemini AI...");
     const now = new Date().toLocaleTimeString([], {
@@ -609,12 +1039,14 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
 
   const quickSamples = [
     "🍔 Lunch with colleagues 18.50 with cash",
-    "🍜 吃午餐花了 15 块半 (Food & Dining)",
-    "⛽ 用现金打油 50 块 (Shell Petrol)",
-    "📋 提醒我明天下午3点买菜 (Task)",
-    "📝 记一下：门禁密码是8842 (Note)",
-    "❓ 刚在超市买了点东西 (Missing details)",
-    "🚫 撤销刚刚那笔支出 (Cancel/Undo)",
+    "🍜 吃午餐花了 15 块半 (餐饮美食)",
+    "⛽ 用现金打油 50 块 (车汽油费)",
+    "🍢 深夜吃宵夜 35 块 (宵夜/美食)",
+    "🎟️ 买了演唱会门票 180 块 (门票/娱乐)",
+    "🎲 买万字 Toto 20 块 (赌博/彩票)",
+    "📋 提醒我明天下午3点买菜 (待办事项)",
+    "📝 记一下：门禁密码是8842 (灵感便签)",
+    "🚫 撤销刚刚那笔支出 (撤销记录)",
   ];
 
   return (
@@ -677,7 +1109,24 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
 
                   {/* If user message */}
                   {isUser && (
-                    <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.text}</p>
+                    <>
+                      {msg.type === "file" && (
+                        <div className="flex items-center gap-2 mb-2 p-2 rounded-xl bg-emerald-950/60 border border-emerald-400/40">
+                          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-300 shrink-0">
+                            <FileText className="h-4 w-4" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-white truncate text-xs">
+                              {msg.fileInfo?.name || "账单流水文件"}
+                            </p>
+                            <p className="text-[10px] text-emerald-300/80">
+                              {msg.fileInfo?.size || "PDF / 图像"}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                      <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.text}</p>
+                    </>
                   )}
 
                   {/* If bot response with SUCCESSFUL UPLOAD */}
@@ -1054,6 +1503,308 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                     </div>
                   )}
 
+                  {/* If bot response with RECONCILIATION_REPORT */}
+                  {!isUser && msg.uploadStatus === "RECONCILIATION_REPORT" && msg.reconciliationData && (
+                    <div className="space-y-3 min-w-0 w-full sm:min-w-[340px]">
+                      {/* Top Header Badge */}
+                      <div className="flex items-center justify-between gap-2 border-b border-slate-700/60 pb-2.5">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 shrink-0">
+                            <FileText className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <h4 className="font-bold text-white text-xs truncate">
+                              {msg.reconciliationData.statement.bankName || "银行流水对账报告"}
+                            </h4>
+                            {msg.reconciliationData.statement.statementPeriod?.start && (
+                              <p className="text-[10px] text-slate-400">
+                                周期: {msg.reconciliationData.statement.statementPeriod.start} ~ {msg.reconciliationData.statement.statementPeriod.end}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <span className="rounded-full bg-emerald-500/10 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-300 shrink-0">
+                          AI 对账报告
+                        </span>
+                      </div>
+
+                      {/* 4 Summary Stats Bar */}
+                      <div className="grid grid-cols-4 gap-1.5 text-center">
+                        <div className="rounded-xl bg-emerald-500/10 border border-emerald-500/20 p-1.5">
+                          <div className="text-emerald-400 font-black text-sm">
+                            {msg.reconciliationData.summary.matchedCount}
+                          </div>
+                          <div className="text-[9px] text-emerald-300/80 font-medium">🟢 已匹配</div>
+                        </div>
+                        <div className="rounded-xl bg-amber-500/10 border border-amber-500/20 p-1.5">
+                          <div className="text-amber-400 font-black text-sm">
+                            {msg.reconciliationData.summary.discrepancyCount}
+                          </div>
+                          <div className="text-[9px] text-amber-300/80 font-medium">🟡 金额差异</div>
+                        </div>
+                        <div className="rounded-xl bg-blue-500/10 border border-blue-500/20 p-1.5">
+                          <div className="text-blue-400 font-black text-sm">
+                            {msg.reconciliationData.missing.filter((m: any) => !m.imported).length}
+                          </div>
+                          <div className="text-[9px] text-blue-300/80 font-medium">🔵 漏记账</div>
+                        </div>
+                        <div className="rounded-xl bg-purple-500/10 border border-purple-500/20 p-1.5">
+                          <div className="text-purple-400 font-black text-sm">
+                            {msg.reconciliationData.ambiguous.filter((a: any) => !a.resolved).length}
+                          </div>
+                          <div className="text-[9px] text-purple-300/80 font-medium">❓ 需确认</div>
+                        </div>
+                      </div>
+
+                      {/* 1. DISCREPANCIES (金额不符) */}
+                      {msg.reconciliationData.discrepancies.length > 0 && (
+                        <div className="space-y-2 rounded-xl bg-amber-950/20 border border-amber-500/30 p-2.5">
+                          <div className="flex items-center gap-1.5 text-amber-300 font-bold text-[11px]">
+                            <AlertCircle className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+                            <span>🟡 发现金额差异 ({msg.reconciliationData.discrepancies.length} 笔)</span>
+                          </div>
+                          <div className="space-y-2">
+                            {msg.reconciliationData.discrepancies.map((disc, idx) => {
+                              const isResolved = disc.resolved;
+                              return (
+                                <div
+                                  key={idx}
+                                  className="rounded-lg bg-black/40 p-2 border border-amber-500/20 text-xs space-y-1.5"
+                                >
+                                  <div className="flex items-start justify-between gap-1">
+                                    <span className="font-semibold text-white truncate max-w-[65%]">
+                                      {disc.statementTx.description}
+                                    </span>
+                                    <span className="text-[10px] text-slate-400">{disc.statementTx.date}</span>
+                                  </div>
+                                  <div className="flex items-center justify-between text-[11px]">
+                                    <span className="text-slate-400">
+                                      账本原记: <span className="line-through text-slate-400">RM {disc.dbTx.amount.toFixed(2)}</span>
+                                    </span>
+                                    <span className="font-bold text-amber-300">
+                                      账单实际: RM {disc.statementTx.amount.toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <div className="pt-1 flex justify-end">
+                                    {isResolved ? (
+                                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 bg-emerald-500/20 px-2 py-0.5 rounded">
+                                        <Check className="h-3 w-3" /> 已同步为账单金额
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleApplyDiscrepancy(msg.id, idx, disc)}
+                                        disabled={isSyncingDiscrepancy === `${msg.id}-${idx}`}
+                                        className="flex items-center gap-1 rounded-md bg-amber-500 hover:bg-amber-400 px-2.5 py-1 text-[10px] font-bold text-slate-950 transition-all cursor-pointer disabled:opacity-50 shadow"
+                                      >
+                                        <RefreshCw
+                                          className={`h-3 w-3 ${
+                                            isSyncingDiscrepancy === `${msg.id}-${idx}` ? "animate-spin" : ""
+                                          }`}
+                                        />
+                                        <span>
+                                          {isSyncingDiscrepancy === `${msg.id}-${idx}`
+                                            ? "同步中..."
+                                            : `一键校正为 RM ${disc.statementTx.amount.toFixed(2)}`}
+                                        </span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 2. MISSING TRANSACTIONS (漏记账) */}
+                      {msg.reconciliationData.missing.length > 0 && (
+                        <div className="space-y-2 rounded-xl bg-blue-950/20 border border-blue-500/30 p-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="flex items-center gap-1.5 text-blue-300 font-bold text-[11px]">
+                              <Plus className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+                              <span>
+                                🔵 发现未记账流水 (
+                                {msg.reconciliationData.missing.filter((m: any) => !m.imported).length} 笔待补记)
+                              </span>
+                            </div>
+                            {msg.reconciliationData.missing.some((m: any) => !m.imported) && (
+                              <button
+                                onClick={() =>
+                                  handleBatchImportMissing(
+                                    msg.id,
+                                    msg.reconciliationData!.missing.filter((m: any) => !m.imported)
+                                  )
+                                }
+                                disabled={isBatchImporting === msg.id}
+                                className="flex items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-500 px-2 py-1 text-[10px] font-bold text-white transition-all cursor-pointer shadow disabled:opacity-50 shrink-0"
+                              >
+                                <FileUp className="h-3 w-3" />
+                                <span>{isBatchImporting === msg.id ? "导入中..." : "一键批量补记全部"}</span>
+                              </button>
+                            )}
+                          </div>
+
+                          <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                            {msg.reconciliationData.missing.map((item: any, idx: number) => {
+                              const isImported = item.imported;
+                              return (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between gap-2 rounded-lg bg-black/40 p-2 border border-blue-500/20 text-xs"
+                                >
+                                  <div className="min-w-0 flex-1">
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="font-semibold text-white truncate max-w-[140px]">
+                                        {item.description}
+                                      </span>
+                                      <span className="rounded bg-slate-800 px-1.5 py-0.2 text-[9px] text-slate-300 shrink-0">
+                                        {item.category}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5">
+                                      <span>{item.date}</span>
+                                      <span
+                                        className={
+                                          item.type === "INCOME"
+                                            ? "text-emerald-400 font-bold"
+                                            : "text-rose-300 font-bold"
+                                        }
+                                      >
+                                        {item.type === "INCOME" ? "+" : "-"}RM {item.amount.toFixed(2)}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="shrink-0">
+                                    {isImported ? (
+                                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-0.5">
+                                        <Check className="h-3 w-3" /> 已入账
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => handleImportSingleMissing(msg.id, item, idx)}
+                                        className="rounded bg-blue-500/20 hover:bg-blue-500/30 border border-blue-500/40 px-2 py-0.5 text-[10px] font-semibold text-blue-200 transition-colors cursor-pointer"
+                                      >
+                                        + 补记
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 3. AMBIGUOUS TRANSACTIONS (需要向用户确认) */}
+                      {msg.reconciliationData.ambiguous.length > 0 && (
+                        <div className="space-y-2 rounded-xl bg-purple-950/20 border border-purple-500/30 p-2.5">
+                          <div className="flex items-center gap-1.5 text-purple-300 font-bold text-[11px]">
+                            <HelpCircle className="h-3.5 w-3.5 text-purple-400 shrink-0" />
+                            <span>❓ 需向您确认的转账交易 ({msg.reconciliationData.ambiguous.length} 笔)</span>
+                          </div>
+
+                          <div className="space-y-1.5">
+                            {msg.reconciliationData.ambiguous.map((amb, idx) => {
+                              const isResolved = amb.resolved;
+                              return (
+                                <div
+                                  key={idx}
+                                  className="rounded-lg bg-black/40 p-2 border border-purple-500/20 text-xs space-y-1"
+                                >
+                                  <div className="flex items-start justify-between gap-1">
+                                    <span className="font-semibold text-white truncate max-w-[70%]">
+                                      {amb.rawNarration || amb.description}
+                                    </span>
+                                    <span className="font-bold text-purple-300 shrink-0">
+                                      RM {amb.amount.toFixed(2)}
+                                    </span>
+                                  </div>
+                                  <p className="text-[10px] text-purple-200/90 leading-tight">
+                                    💬 {amb.ambiguityReason || "这是个人转账/DuitNow，请问是什么用途？"}
+                                  </p>
+                                  <div className="pt-1 flex justify-end">
+                                    {isResolved ? (
+                                      <span className="text-[10px] font-bold text-emerald-400 flex items-center gap-1 bg-emerald-500/20 px-2 py-0.5 rounded">
+                                        <Check className="h-3 w-3" /> 已补充说明并入账
+                                      </span>
+                                    ) : (
+                                      <button
+                                        onClick={() => {
+                                          setPendingClarification({ msgId: msg.id, itemIndex: idx, item: amb });
+                                          setInputMessage(`这是 `);
+                                        }}
+                                        className="flex items-center gap-1 rounded bg-purple-600 hover:bg-purple-500 px-2.5 py-1 text-[10px] font-bold text-white transition-all cursor-pointer shadow"
+                                      >
+                                        <span>💬 补充说明此笔交易</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* 4. MATCHED (核对一致) */}
+                      {msg.reconciliationData.matched.length > 0 && (
+                        <div className="rounded-xl bg-black/40 border border-slate-700/60 overflow-hidden">
+                          <button
+                            onClick={() =>
+                              setExpandedMatched((prev) => ({
+                                ...prev,
+                                [msg.id]: !prev[msg.id],
+                              }))
+                            }
+                            className="w-full flex items-center justify-between p-2.5 text-xs text-slate-300 hover:bg-slate-800/50 transition-colors text-left"
+                          >
+                            <span className="flex items-center gap-1.5 font-semibold text-emerald-400">
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+                              <span>🟢 已核对一致 ({msg.reconciliationData.matched.length} 笔)</span>
+                            </span>
+                            {expandedMatched[msg.id] ? (
+                              <ChevronUp className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            ) : (
+                              <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            )}
+                          </button>
+
+                          {expandedMatched[msg.id] && (
+                            <div className="p-2 space-y-1 max-h-40 overflow-y-auto border-t border-slate-800 text-[11px]">
+                              {msg.reconciliationData.matched.map((m, idx) => (
+                                <div
+                                  key={idx}
+                                  className="flex items-center justify-between gap-1 text-slate-300 py-0.5 border-b border-slate-800/40 last:border-0"
+                                >
+                                  <div className="truncate max-w-[65%]">
+                                    <span className="text-slate-400 mr-1.5">{m.statementTx.date}</span>
+                                    <span>{m.statementTx.description}</span>
+                                  </div>
+                                  <span className="font-bold text-emerald-400 shrink-0">
+                                    RM {m.statementTx.amount.toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* View in Ledger Link */}
+                      <div className="pt-1 flex items-center justify-between gap-2 flex-wrap border-t border-slate-800/60 mt-1">
+                        <Link
+                          href="/transactions"
+                          className="text-[10px] font-bold text-emerald-400 hover:underline flex items-center gap-1 shrink-0"
+                        >
+                          <span>在账本中查看所有交易 (View in Ledger)</span>
+                          <ArrowUpRight className="h-3 w-3" />
+                        </Link>
+                        <span className="text-[10px] text-slate-500 ml-auto">{msg.timestamp}</span>
+                      </div>
+                    </div>
+                  )}
+
                   {/* Standard initial bot messages */}
                   {!isUser &&
                     msg.uploadStatus !== "SAVED" &&
@@ -1062,7 +1813,8 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                     msg.uploadStatus !== "NOTE_SAVED" &&
                     msg.uploadStatus !== "CLARIFICATION" &&
                     msg.uploadStatus !== "CANCELLED" &&
-                    msg.uploadStatus !== "UPDATED" && (
+                    msg.uploadStatus !== "UPDATED" &&
+                    msg.uploadStatus !== "RECONCILIATION_REPORT" && (
                       <>
                         <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.text}</p>
                         <div className="mt-1 flex items-center justify-end text-[10px] text-slate-400">
@@ -1130,14 +1882,54 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           </div>
         )}
 
+        {/* Hidden File Input for Statement Upload */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="application/pdf,image/png,image/jpeg,image/webp"
+          onChange={handleFileSelect}
+          className="hidden"
+        />
+
+        {/* Ambiguous Transaction Clarification Active Banner */}
+        {pendingClarification && (
+          <div className="bg-purple-950/80 border-t border-purple-500/40 px-3.5 py-2 flex items-center justify-between gap-2 text-xs text-purple-200 animate-fadeIn shrink-0">
+            <div className="flex items-center gap-2 truncate">
+              <HelpCircle className="h-4 w-4 text-purple-400 shrink-0" />
+              <span className="truncate">
+                正在向您确认：<strong>{pendingClarification.item.description || pendingClarification.item.rawNarration}</strong> (RM {pendingClarification.item.amount.toFixed(2)})
+              </span>
+            </div>
+            <button
+              onClick={() => setPendingClarification(null)}
+              className="text-purple-300 hover:text-white text-[11px] font-bold shrink-0 ml-2 px-2 py-0.5 rounded bg-purple-900/60 hover:bg-purple-800 transition-colors"
+            >
+              取消
+            </button>
+          </div>
+        )}
+
         {/* Input Bar */}
         <div className="flex items-center gap-2 bg-[#202c33] p-3 border-t border-slate-800 shrink-0">
+          {/* File Upload Button */}
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isRecording || isProcessing}
+            title="上传银行流水账单 (PDF / 截图)"
+            className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2a3942] text-slate-300 hover:text-emerald-400 hover:bg-slate-700 active:scale-95 transition-all shrink-0 cursor-pointer disabled:opacity-40"
+          >
+            <Paperclip className="h-4 w-4" />
+          </button>
+
           <input
             type="text"
             placeholder={
-              isRecording
+              pendingClarification
+                ? `💬 请输入说明（例如：还朋友钱 / 聚餐分账 / 晚餐）...`
+                : isRecording
                 ? "Recording voice... Click Cancel or Send"
-                : "Type an expense (e.g. 'Lunch 15.50', 'Spent 40 on fuel')..."
+                : "输入记账（如：打油50、宵夜35），或点 📎 上传账单..."
             }
             disabled={isRecording || isProcessing}
             value={inputMessage}

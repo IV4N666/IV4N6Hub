@@ -189,6 +189,7 @@ export interface AIParsedExpense {
   amount: number;
   type: TransactionType;
   category: string;
+  subCategory?: string | null;
   description: string;
   currency: string;
   date?: string;
