@@ -4,6 +4,7 @@ import { parseTextWithAI, parseAudioWithAI } from "@/lib/gemini";
 import { AIParsedExpense } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   try {

@@ -7,6 +7,7 @@ import {
 } from "@/lib/gemini";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 // Helper to normalize strings for comparison
 function cleanStr(str: string): string {

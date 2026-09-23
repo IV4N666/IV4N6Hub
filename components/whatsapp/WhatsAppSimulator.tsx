@@ -219,6 +219,12 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         });
         audioChunksRef.current = [];
 
+        if (audioBlob.size < 500) {
+          // Empty or accidental tap — don't send empty audio to AI
+          console.warn("Audio recording was too brief (<500 bytes), skipped upload");
+          return;
+        }
+
         if (audioBlob.size > 0) {
           await handleAudioUpload(audioBlob);
         }
@@ -275,6 +281,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       minute: "2-digit",
     });
 
+    const displayDuration = recordingDuration > 0 ? recordingDuration : 1;
     const userMsgId = String(Date.now());
     setMessages((prev) => [
       ...prev,
@@ -282,7 +289,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         id: userMsgId,
         sender: "user",
         type: "voice",
-        text: `🎤 Voice note (${recordingDuration}s)`,
+        text: `🎤 Voice note (${displayDuration}s)`,
         timestamp: now,
       },
     ]);

@@ -64,30 +64,34 @@ export function cleanJsonText(raw: string): string {
   return cleaned.trim();
 }
 
+// Dynamic in-memory set to permanently blacklist models that return 404 / no longer available
+const dynamicDeprecatedModels = new Set<string>();
+
 // Check if a model is deprecated, shut down, or unsupported for generateContent
 export function isModelDeprecated(name: string): boolean {
   if (!name) return true;
   const clean = name.replace(/^models\//, "").toLowerCase();
+  if (dynamicDeprecatedModels.has(clean) || dynamicDeprecatedModels.has(name.toLowerCase())) return true;
   return (
     clean.startsWith("gemini-1.5") ||
     clean.startsWith("gemini-1.0") ||
     clean.startsWith("gemini-2.0") ||
+    clean.startsWith("gemini-2.5-flash-lite") ||
     clean === "gemini-pro" ||
     clean.includes("bison")
   );
 }
 
-// Prioritized list of active, supported modern Gemini models (2.5 & 3.x Flash)
+// Prioritized list of active, supported modern Gemini models (Google recommended 3.5-flash-lite & 3.x Flash)
 export const CANDIDATE_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.5-flash-lite",
+  "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
   "gemini-3-flash-preview",
   "gemini-3.8-flash",
   "gemini-3.7-flash",
   "gemini-3.6-flash",
-  "gemini-3.5-flash",
-  "gemini-3.5-flash-lite",
   "gemini-3.1-flash-lite",
+  "gemini-2.5-flash",
   "gemini-2.5-pro",
 ];
 
@@ -165,8 +169,8 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
     console.warn("[Gemini] Unable to fetch model list from Google API, using default fallback:", err);
   }
 
-  // Default to gemini-2.5-flash
-  return "gemini-2.5-flash";
+  // Default to gemini-3.5-flash-lite as explicitly recommended by Google
+  return "gemini-3.5-flash-lite";
 }
 
 /**
@@ -182,16 +186,18 @@ export async function generateContentWithFallback(
 ) {
   const resolvedModel = await resolveWorkingModel(apiKey);
 
-  // Active models trial queue (limit to top 2 fastest models to avoid long cascading delays)
+  // Active models trial queue (try up to top 4 fastest models to avoid long cascading delays)
   const fullQueue = [
     resolvedModel,
     ...CANDIDATE_MODELS.filter((m) => m !== resolvedModel),
   ].filter((m) => !isModelDeprecated(m));
-  const trialQueue = fullQueue.slice(0, 2);
+  const trialQueue = fullQueue.slice(0, 4);
 
   let lastError: any = null;
 
   for (const modelName of trialQueue) {
+    if (isModelDeprecated(modelName)) continue;
+
     try {
       const { timeoutMs: customTimeout, ...cleanConfig } = generationConfig || {};
       const mergedConfig = {
@@ -204,8 +210,8 @@ export async function generateContentWithFallback(
         generationConfig: mergedConfig,
       });
 
-      // Configurable timeout (default 6.5s for fast conversational chat, higher for documents/PDF)
-      const timeoutMs = customTimeout || 6500;
+      // Configurable timeout (default 8s for fast conversational chat, higher for documents/PDF)
+      const timeoutMs = customTimeout || 8000;
       const timeoutPromise = new Promise((_, reject) => {
         const timer = setTimeout(() => {
           reject(new Error(`Timeout: Gemini model '${modelName}' took more than ${timeoutMs / 1000}s to reply`));
@@ -226,12 +232,25 @@ export async function generateContentWithFallback(
       lastError = err;
       const errMsg = (err?.message || String(err)).toLowerCase();
 
-      // Check if this error is timeout, 404 / model not found / unsupported
+      // If model is 404 or retired / no longer available, permanently blacklist it
+      if (
+        errMsg.includes("404") ||
+        errMsg.includes("no longer available") ||
+        errMsg.includes("not found") ||
+        errMsg.includes("is not supported for generatecontent")
+      ) {
+        dynamicDeprecatedModels.add(modelName.toLowerCase());
+        modelCache.delete(apiKey);
+      }
+
+      // Check if this error is retryable
       const isRetryableError =
         errMsg.includes("timeout") ||
         errMsg.includes("404") ||
         errMsg.includes("not found") ||
+        errMsg.includes("no longer available") ||
         errMsg.includes("is not supported for generatecontent") ||
+        errMsg.includes("503") ||
         errMsg.includes("models/");
 
       if (isRetryableError) {
