@@ -48,13 +48,26 @@ export async function POST(request: NextRequest) {
 
     // 1. ANALYZE: Parse statement via Gemini and cross-reference with DB
     if (action === "ANALYZE") {
-      const { fileBase64, mimeType = "application/pdf", accountId, currency = "MYR" } = body;
+      const { fileBase64, mimeType = "application/pdf", fileName, accountId, currency = "MYR" } = body;
 
       if (!fileBase64) {
         return NextResponse.json(
           { success: false, error: "File base64 data is required" },
           { status: 400 }
         );
+      }
+
+      // Accurately resolve MIME type (guard against mobile browser application/octet-stream)
+      let resolvedMime = (mimeType || "").toLowerCase();
+      const lowerName = (fileName || "").toLowerCase();
+      if (lowerName.endsWith(".pdf") || fileBase64.startsWith("JVBERi0")) {
+        resolvedMime = "application/pdf";
+      } else if (lowerName.endsWith(".png") || fileBase64.startsWith("iVBORw0KGgo")) {
+        resolvedMime = "image/png";
+      } else if (lowerName.endsWith(".jpg") || lowerName.endsWith(".jpeg") || fileBase64.startsWith("/9j/")) {
+        resolvedMime = "image/jpeg";
+      } else if (resolvedMime.includes("pdf") || resolvedMime.includes("octet-stream") || !resolvedMime) {
+        resolvedMime = "application/pdf";
       }
 
       // Fetch accounts for prompt context and matching
@@ -65,7 +78,7 @@ export async function POST(request: NextRequest) {
       // Parse with Gemini Multimodal AI
       const statement = await parseBankStatementWithAI(
         fileBase64,
-        mimeType,
+        resolvedMime,
         userApiKey,
         currency,
         accounts

@@ -380,14 +380,26 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       const reader = new FileReader();
       reader.readAsDataURL(file);
       reader.onloadend = async () => {
-        const base64Data = (reader.result as string).split(",")[1];
+        const rawResult = reader.result as string;
+        const base64Data = rawResult.includes(",") ? rawResult.split(",")[1].trim() : rawResult.trim();
+        
+        let clientMime = file.type || "application/pdf";
+        if (file.name.toLowerCase().endsWith(".pdf")) {
+          clientMime = "application/pdf";
+        } else if (file.name.toLowerCase().endsWith(".png")) {
+          clientMime = "image/png";
+        } else if (file.name.toLowerCase().endsWith(".jpg") || file.name.toLowerCase().endsWith(".jpeg")) {
+          clientMime = "image/jpeg";
+        }
+
         const res = await fetch("/api/ai/reconcile", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: "ANALYZE",
             fileBase64: base64Data,
-            mimeType: file.type || "application/pdf",
+            mimeType: clientMime,
+            fileName: file.name,
             currency,
           }),
         });

@@ -82,16 +82,15 @@ export function isModelDeprecated(name: string): boolean {
   );
 }
 
-// Prioritized list of active, supported modern Gemini models (Google recommended 3.5-flash-lite & 3.x Flash)
+// Prioritized list of active, supported modern Gemini models (3.8, 3.7, 3.5 Flash)
 export const CANDIDATE_MODELS = [
-  "gemini-3.5-flash-lite",
-  "gemini-3.5-flash",
-  "gemini-3-flash-preview",
   "gemini-3.8-flash",
   "gemini-3.7-flash",
-  "gemini-3.6-flash",
-  "gemini-3.1-flash-lite",
+  "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
   "gemini-2.5-flash",
+  "gemini-3-flash-preview",
+  "gemini-3.1-flash-lite",
   "gemini-2.5-pro",
 ];
 
@@ -169,8 +168,8 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
     console.warn("[Gemini] Unable to fetch model list from Google API, using default fallback:", err);
   }
 
-  // Default to gemini-3.5-flash-lite as explicitly recommended by Google
-  return "gemini-3.5-flash-lite";
+  // Default to gemini-3.8-flash
+  return "gemini-3.8-flash";
 }
 
 /**
@@ -198,30 +197,29 @@ export async function generateContentWithFallback(
   for (const modelName of trialQueue) {
     if (isModelDeprecated(modelName)) continue;
 
-    try {
-      const { timeoutMs: customTimeout, ...cleanConfig } = generationConfig || {};
-      const mergedConfig = {
-        ...cleanConfig,
-        maxOutputTokens: cleanConfig?.maxOutputTokens || 800,
-      };
-
-      const model = genAI.getGenerativeModel({
-        model: modelName,
-        generationConfig: mergedConfig,
-      });
-
-      // Configurable timeout (default 8s for fast conversational chat, higher for documents/PDF)
-      const timeoutMs = customTimeout || 8000;
-      const timeoutPromise = new Promise((_, reject) => {
+    const { timeoutMs: customTimeout, ...cleanConfig } = generationConfig || {};
+    const mergedConfig = {
+      ...cleanConfig,
+      maxOutputTokens: cleanConfig?.maxOutputTokens || 800,
+    };
+    const timeoutMs = customTimeout || 8000;
+    const createTimeout = () =>
+      new Promise((_, reject) => {
         const timer = setTimeout(() => {
           reject(new Error(`Timeout: Gemini model '${modelName}' took more than ${timeoutMs / 1000}s to reply`));
         }, timeoutMs);
         (timer as any).unref?.();
       });
 
+    try {
+      const model = genAI.getGenerativeModel({
+        model: modelName,
+        generationConfig: mergedConfig,
+      });
+
       const result = (await Promise.race([
         model.generateContent(contents),
-        timeoutPromise,
+        createTimeout(),
       ])) as any;
 
       // Successfully processed! Cache this model as working
@@ -243,7 +241,7 @@ export async function generateContentWithFallback(
         modelCache.delete(apiKey);
       }
 
-      // Check if this error is retryable
+      // Check if this error is retryable (timeout, 404, model deprecated/not found, 503, 429)
       const isRetryableError =
         errMsg.includes("timeout") ||
         errMsg.includes("404") ||
@@ -251,7 +249,27 @@ export async function generateContentWithFallback(
         errMsg.includes("no longer available") ||
         errMsg.includes("is not supported for generatecontent") ||
         errMsg.includes("503") ||
-        errMsg.includes("models/");
+        errMsg.includes("429");
+
+      // If it's a 400 with invalid argument and responseMimeType was set, retry this same model without responseMimeType
+      if (errMsg.includes("400") && errMsg.includes("invalid argument") && mergedConfig?.responseMimeType) {
+        try {
+          const { responseMimeType, ...noMimeConfig } = mergedConfig;
+          const retryModel = genAI.getGenerativeModel({
+            model: modelName,
+            generationConfig: noMimeConfig,
+          });
+          const retryResult = (await Promise.race([
+            retryModel.generateContent(contents),
+            createTimeout(),
+          ])) as any;
+          setCachedModel(apiKey, modelName);
+          retryResult.model = modelName;
+          return retryResult;
+        } catch (innerErr) {
+          // If still fails, proceed to next candidate
+        }
+      }
 
       if (isRetryableError) {
         console.warn(
@@ -1194,19 +1212,41 @@ Return ONLY a valid JSON object matching this schema:
   ]
 }`;
 
-  const cleanMime = (mimeType || "application/pdf").split(";")[0].trim();
-  const filePart = {
-    inlineData: {
-      data: fileBase64,
-      mimeType: cleanMime,
-    },
-  };
+  // 1. Clean and normalize Base64 data (strip data URI prefix, remove all whitespace/newlines)
+  let cleanBase64 = (fileBase64 || "").trim();
+  if (cleanBase64.includes(",")) {
+    cleanBase64 = cleanBase64.split(",")[1].trim();
+  }
+  cleanBase64 = cleanBase64.replace(/\s+/g, "");
 
-  const result = await generateContentWithFallback(genAI, apiKey, [prompt, filePart], {
+  // 2. Accurately detect and sanitize MIME type
+  let cleanMime = (mimeType || "application/pdf").split(";")[0].trim().toLowerCase();
+  if (cleanBase64.startsWith("JVBERi0") || cleanMime.includes("pdf")) {
+    cleanMime = "application/pdf";
+  } else if (cleanBase64.startsWith("/9j/") || cleanMime.includes("jpeg") || cleanMime.includes("jpg")) {
+    cleanMime = "image/jpeg";
+  } else if (cleanBase64.startsWith("iVBORw0KGgo") || cleanMime.includes("png")) {
+    cleanMime = "image/png";
+  } else if (cleanMime === "application/octet-stream" || !cleanMime) {
+    cleanMime = "application/pdf";
+  }
+
+  // 3. Format as structured Parts conforming to Google Generative AI Part spec
+  const contents = [
+    { text: prompt },
+    {
+      inlineData: {
+        data: cleanBase64,
+        mimeType: cleanMime,
+      },
+    },
+  ];
+
+  const result = await generateContentWithFallback(genAI, apiKey, contents, {
     responseMimeType: "application/json",
     temperature: 0.1,
-    maxOutputTokens: 8000,
-    timeoutMs: 30000, // 30s for PDF extraction
+    maxOutputTokens: 4096,
+    timeoutMs: 45000, // 45s for PDF extraction
   });
 
   const responseText = cleanJsonText(result.response.text());
