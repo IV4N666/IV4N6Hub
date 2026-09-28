@@ -53,15 +53,16 @@ export function getTodayDateString(timeZone = "Asia/Kuala_Lumpur"): string {
 
 export function cleanJsonText(raw: string): string {
   let cleaned = (raw || "").trim();
-  if (cleaned.startsWith("```json")) {
-    cleaned = cleaned.substring(7);
-  } else if (cleaned.startsWith("```")) {
-    cleaned = cleaned.substring(3);
+  const jsonBlockMatch = cleaned.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (jsonBlockMatch && jsonBlockMatch[1]) {
+    cleaned = jsonBlockMatch[1].trim();
   }
-  if (cleaned.endsWith("```")) {
-    cleaned = cleaned.substring(0, cleaned.length - 3);
+  const firstBrace = cleaned.indexOf("{");
+  const lastBrace = cleaned.lastIndexOf("}");
+  if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+    cleaned = cleaned.substring(firstBrace, lastBrace + 1).trim();
   }
-  return cleaned.trim();
+  return cleaned;
 }
 
 // Dynamic in-memory set to permanently blacklist models that return 404 / no longer available
@@ -73,8 +74,8 @@ export function isModelDeprecated(name: string): boolean {
   const clean = name.replace(/^models\//, "").toLowerCase();
   if (dynamicDeprecatedModels.has(clean) || dynamicDeprecatedModels.has(name.toLowerCase())) return true;
   return (
-    clean.startsWith("gemini-1.0") ||
-    clean.startsWith("gemini-2.5-flash-lite") ||
+    clean.startsWith("gemini-1.") ||
+    clean.startsWith("gemini-2.") ||
     clean === "gemini-pro" ||
     clean.includes("bison")
   );
@@ -82,13 +83,12 @@ export function isModelDeprecated(name: string): boolean {
 
 // Prioritized list of active, supported Gemini models
 export const CANDIDATE_MODELS = [
-  "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-  "gemini-2.5-pro",
+  "gemini-3.1-pro-preview",
   "gemini-3.8-flash",
   "gemini-3.7-flash",
-  "gemini-1.5-pro",
+  "gemini-3.5-flash",
+  "gemini-3.1-flash-lite",
+  "gemini-3-flash-preview",
 ];
 
 // In-memory cache for the resolved model per API key (1 hour TTL, max 50 keys)
@@ -166,7 +166,7 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
   }
 
   // Default to gemini-2.5-flash
-  return "gemini-2.5-flash";
+  return "gemini-3.1-pro-preview";
 }
 
 /**
@@ -187,7 +187,7 @@ export async function generateContentWithFallback(
     resolvedModel,
     ...CANDIDATE_MODELS.filter((m) => m !== resolvedModel),
   ].filter((m) => !isModelDeprecated(m));
-  const trialQueue = fullQueue.slice(0, 4);
+  const trialQueue = fullQueue.slice(0, 6);
 
   let lastError: any = null;
 
