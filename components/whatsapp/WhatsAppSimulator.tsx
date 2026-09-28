@@ -407,6 +407,26 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         const data = await res.json();
         setIsProcessing(false);
 
+        if (res.status === 401 || data.error?.includes("Master passcode required") || data.error?.includes("Unauthorized")) {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: "bot",
+              type: "text",
+              text: `🔒 您的登录状态已过期（Master passcode required）。\n为了保护您的私人财务数据安全，请重新输入主密码登录后再使用！`,
+              uploadStatus: "ERROR",
+              timestamp: now,
+            },
+          ]);
+          setTimeout(() => {
+            if (confirm("🔒 登录凭证已失效（Master passcode required），需要验证管理员主密码。\n是否立即前往登录页面？")) {
+              window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+            }
+          }, 300);
+          return;
+        }
+
         if (data.success && data.statement) {
           const s = data.summary;
           const botReportText = `📊 账单核对完成！为您比对了 ${s.totalStatementTransactions} 笔交易记录：\n🟢 已匹配一致：${s.matchedCount} 笔\n🟡 发现金额差异：${s.discrepancyCount} 笔\n🔵 发现漏记账：${s.missingCount} 笔\n❓ 需向您确认：${s.ambiguousCount} 笔`;
@@ -807,6 +827,27 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
 
   const handleApiResponse = (data: any, timestamp: string) => {
     setIsProcessing(false);
+
+    if (data?.error?.includes("Master passcode required") || data?.error?.includes("Unauthorized")) {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: String(Date.now() + 1),
+          sender: "bot",
+          type: "text",
+          text: `🔒 您的登录状态已过期（Master passcode required）。\n为了保护您的私人财务数据安全，请重新输入主密码登录后再使用！`,
+          uploadStatus: "ERROR",
+          timestamp,
+        },
+      ]);
+      setTimeout(() => {
+        if (confirm("🔒 登录凭证已失效（Master passcode required），需要验证管理员主密码。\n是否立即前往登录页面？")) {
+          window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+        }
+      }, 300);
+      return;
+    }
+
     if (data.success && data.parsed) {
       const parsed = data.parsed;
 
