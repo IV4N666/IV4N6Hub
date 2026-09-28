@@ -73,25 +73,22 @@ export function isModelDeprecated(name: string): boolean {
   const clean = name.replace(/^models\//, "").toLowerCase();
   if (dynamicDeprecatedModels.has(clean) || dynamicDeprecatedModels.has(name.toLowerCase())) return true;
   return (
-    clean.startsWith("gemini-1.5") ||
     clean.startsWith("gemini-1.0") ||
-    clean.startsWith("gemini-2.0") ||
     clean.startsWith("gemini-2.5-flash-lite") ||
     clean === "gemini-pro" ||
     clean.includes("bison")
   );
 }
 
-// Prioritized list of active, supported modern Gemini models (3.8, 3.7, 3.5 Flash)
+// Prioritized list of active, supported Gemini models
 export const CANDIDATE_MODELS = [
+  "gemini-2.5-flash",
+  "gemini-2.0-flash",
+  "gemini-1.5-flash",
+  "gemini-2.5-pro",
   "gemini-3.8-flash",
   "gemini-3.7-flash",
-  "gemini-3.5-flash-lite",
-  "gemini-3.5-flash",
-  "gemini-2.5-flash",
-  "gemini-3-flash-preview",
-  "gemini-3.1-flash-lite",
-  "gemini-2.5-pro",
+  "gemini-1.5-pro",
 ];
 
 // In-memory cache for the resolved model per API key (1 hour TTL, max 50 keys)
@@ -168,8 +165,8 @@ export async function resolveWorkingModel(apiKey: string): Promise<string> {
     console.warn("[Gemini] Unable to fetch model list from Google API, using default fallback:", err);
   }
 
-  // Default to gemini-3.8-flash
-  return "gemini-3.8-flash";
+  // Default to gemini-2.5-flash
+  return "gemini-2.5-flash";
 }
 
 /**
@@ -230,21 +227,24 @@ export async function generateContentWithFallback(
       lastError = err;
       const errMsg = (err?.message || String(err)).toLowerCase();
 
-      // If model is 404 or retired / no longer available, permanently blacklist it
+      // If model is 404, 400 (invalid model), or retired / no longer available, blacklist it
       if (
         errMsg.includes("404") ||
         errMsg.includes("no longer available") ||
         errMsg.includes("not found") ||
-        errMsg.includes("is not supported for generatecontent")
+        errMsg.includes("is not supported for generatecontent") ||
+        (errMsg.includes("400") && (errMsg.includes("invalid argument") || errMsg.includes("not supported")))
       ) {
         dynamicDeprecatedModels.add(modelName.toLowerCase());
         modelCache.delete(apiKey);
       }
 
-      // Check if this error is retryable (timeout, 404, model deprecated/not found, 503, 429)
+      // Check if this error is retryable (timeout, 404, 400, model deprecated/not found, 503, 429)
       const isRetryableError =
         errMsg.includes("timeout") ||
         errMsg.includes("404") ||
+        errMsg.includes("400") ||
+        errMsg.includes("invalid argument") ||
         errMsg.includes("not found") ||
         errMsg.includes("no longer available") ||
         errMsg.includes("is not supported for generatecontent") ||
@@ -1231,18 +1231,15 @@ Return ONLY a valid JSON object matching this schema:
     cleanMime = "application/pdf";
   }
 
-  // 3. Format as structured Parts conforming to Google Generative AI Part spec
-  const contents = [
-    { text: prompt },
-    {
-      inlineData: {
-        data: cleanBase64,
-        mimeType: cleanMime,
-      },
+  // 3. Format as structured [prompt, filePart] array
+  const filePart = {
+    inlineData: {
+      data: cleanBase64,
+      mimeType: cleanMime,
     },
-  ];
+  };
 
-  const result = await generateContentWithFallback(genAI, apiKey, contents, {
+  const result = await generateContentWithFallback(genAI, apiKey, [prompt, filePart], {
     responseMimeType: "application/json",
     temperature: 0.1,
     maxOutputTokens: 4096,
