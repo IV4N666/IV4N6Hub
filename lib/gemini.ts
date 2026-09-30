@@ -227,6 +227,13 @@ export async function generateContentWithFallback(
       lastError = err;
       const errMsg = (err?.message || String(err)).toLowerCase();
 
+      // Non-retryable document error: PDF is empty or password-protected
+      if (errMsg.includes("the document has no pages") || errMsg.includes("has no pages")) {
+        throw new Error(
+          "🔒 无法读取该 PDF 账单的页面内容（The document has no pages）。\n\n这通常是因为：\n1. 该 PDF 设置了加密/打开密码（Touch 'n Go 账单通常默认绑定了身份证号或出生年月日密码），AI 无法穿透密码读取页面。\n2. 该文件在导出或传输时可能格式受损或无实际页面。\n\n💡 极速解决方案（推荐）：\n👉 直接在手机上打开账单，截屏（Screenshot）流水明细图片，然后点击回形针 📎 发送截图给我，AI 会立即为您秒级对账！\n👉 或者在电脑/手机上用浏览器打开 PDF 输入密码，点击「打印」并选择「另存为 PDF（无密码版）」后再上传。"
+        );
+      }
+
       // If model is 404, 400 (invalid model), or retired / no longer available, blacklist it
       if (
         errMsg.includes("404") ||
@@ -1229,6 +1236,23 @@ Return ONLY a valid JSON object matching this schema:
     cleanMime = "image/png";
   } else if (cleanMime === "application/octet-stream" || !cleanMime) {
     cleanMime = "application/pdf";
+  }
+
+  // 2.5 Pre-check for PDF encryption/password protection
+  if (cleanMime === "application/pdf") {
+    try {
+      const buffer = Buffer.from(cleanBase64, "base64");
+      const rawText = buffer.slice(0, 100000).toString("latin1");
+      if (rawText.includes("/Encrypt")) {
+        throw new Error(
+          "🔒 检测到该 PDF 账单包含加密密码保护（Touch 'n Go 账单默认绑定了您的身份证号或出生年月日密码），AI 无法直接读取受密码保护的内容。\n\n💡 极速解决方案（推荐）：\n👉 直接在手机上打开该账单，截屏（Screenshot）流水记录图片，然后点击回形针 📎 发送截图给我，AI 会以极高准确率为您秒级自动对账！\n👉 或者在电脑/手机上用浏览器打开 PDF 输入密码，选择「打印 -> 另存为 PDF（无密码版）」后再上传。"
+        );
+      }
+    } catch (e: any) {
+      if (e.message && e.message.includes("密码保护")) {
+        throw e;
+      }
+    }
   }
 
   // 3. Format as structured [prompt, filePart] array

@@ -444,13 +444,16 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
             },
           ]);
         } else {
+          const errText = data.error || data.message || "请检查文件是否为清晰的银行流水账单或对账单截图。";
           setMessages((prev) => [
             ...prev,
             {
               id: String(Date.now() + 1),
               sender: "bot",
               type: "text",
-              text: `⚠️ 账单分析未能识别出交易明细：${data.error || data.message || "请检查文件是否为清晰的银行流水账单或对账单截图。"}`,
+              text: errText.startsWith("🔒")
+                ? errText
+                : `⚠️ 账单分析未能识别出交易明细：${errText}`,
               uploadStatus: "ERROR",
               timestamp: now,
             },

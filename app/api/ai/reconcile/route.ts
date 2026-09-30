@@ -76,13 +76,21 @@ export async function POST(request: NextRequest) {
       });
 
       // Parse with Gemini Multimodal AI
-      const statement = await parseBankStatementWithAI(
-        fileBase64,
-        resolvedMime,
-        userApiKey,
-        currency,
-        accounts
-      );
+      let statement;
+      try {
+        statement = await parseBankStatementWithAI(
+          fileBase64,
+          resolvedMime,
+          userApiKey,
+          currency,
+          accounts
+        );
+      } catch (parseErr: any) {
+        return NextResponse.json({
+          success: false,
+          error: parseErr.message || "Failed to parse bank statement",
+        }, { status: 400 });
+      }
 
       if (!statement.transactions || statement.transactions.length === 0) {
         return NextResponse.json({
