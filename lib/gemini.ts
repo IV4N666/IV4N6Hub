@@ -65,6 +65,92 @@ export function cleanJsonText(raw: string): string {
   return cleaned;
 }
 
+/**
+ * Robust JSON parser that handles truncated or slightly malformed JSON from LLMs.
+ * If generation was cut off, it recovers all complete items in the array.
+ */
+export function repairAndParseJson<T = any>(raw: string): T {
+  const text = (raw || "").trim();
+  const cleaned = cleanJsonText(text);
+
+  // 1. Try direct parse
+  try {
+    return JSON.parse(cleaned);
+  } catch {}
+
+  try {
+    return JSON.parse(text);
+  } catch {}
+
+  // 2. Repair truncated JSON (e.g. cut off inside transactions: [...])
+  const lastBrace = text.lastIndexOf("}");
+  if (lastBrace !== -1) {
+    let candidate = text.substring(0, lastBrace + 1).trim();
+    if (candidate.startsWith("```json")) candidate = candidate.substring(7).trim();
+    else if (candidate.startsWith("```")) candidate = candidate.substring(3).trim();
+
+    const firstBrace = candidate.indexOf("{");
+    if (firstBrace !== -1) {
+      candidate = candidate.substring(firstBrace);
+    }
+
+    let inString = false;
+    let escapes = 0;
+    let openB = 0;
+    let closeB = 0;
+    let openC = 0;
+    let closeC = 0;
+
+    for (let i = 0; i < candidate.length; i++) {
+      const ch = candidate[i];
+      if (ch === "\\" && inString) {
+        escapes++;
+        continue;
+      }
+      if (ch === '"' && escapes % 2 === 0) {
+        inString = !inString;
+      }
+      escapes = 0;
+      if (!inString) {
+        if (ch === "[") openB++;
+        else if (ch === "]") closeB++;
+        else if (ch === "{") openC++;
+        else if (ch === "}") closeC++;
+      }
+    }
+
+    if (openB > closeB) {
+      candidate += "]".repeat(openB - closeB);
+    }
+    if (openC > closeC) {
+      candidate += "}".repeat(openC - closeC);
+    }
+
+    try {
+      return JSON.parse(candidate);
+    } catch {}
+  }
+
+  // 3. Fallback: Extract all valid transaction objects via regex
+  const txMatches = text.match(/\{[^{}]*"date"[^{}]*"amount"[^{}]*\}/g);
+  if (txMatches && txMatches.length > 0) {
+    const transactions = [];
+    for (const match of txMatches) {
+      try {
+        transactions.push(JSON.parse(match));
+      } catch {}
+    }
+    if (transactions.length > 0) {
+      return {
+        bankName: "Statement",
+        transactions,
+      } as any;
+    }
+  }
+
+  return JSON.parse(cleaned);
+}
+
 // Dynamic in-memory set to permanently blacklist models that return 404 / no longer available
 const dynamicDeprecatedModels = new Set<string>();
 
@@ -1189,7 +1275,7 @@ Instructions:
    - For outflows (withdrawals, debits, payments, charges): type = "EXPENSE"
    - For inflows (deposits, credits, salary, refund): type = "INCOME"
    - For inter-account transfers: type = "TRANSFER"
-3. Clean the description to be human-readable, while keeping the full verbatim transaction text in rawNarration.
+3. Clean the description to be human-readable and concise (e.g. "KFC Delivery", "Shell Ron95", "Transfer to Ali"). If rawNarration is similar to description, keep it brief to save tokens.
 4. Categorize each transaction into one of the Standard Categories, and provide a subCategory if applicable.
 5. Identify Ambiguous Transactions:
    - If a transaction is an unlabelled DuitNow / FPX / IBG transfer to a person with unclear purpose, or marked only with an obscure code, set isAmbiguous: true, and set ambiguityReason in Chinese explaining what to ask the user (e.g. "DuitNow 转账给个人，请问是还钱、聚餐分账还是其他开销？").
@@ -1266,13 +1352,13 @@ Return ONLY a valid JSON object matching this schema:
   const result = await generateContentWithFallback(genAI, apiKey, [prompt, filePart], {
     responseMimeType: "application/json",
     temperature: 0.1,
-    maxOutputTokens: 4096,
-    timeoutMs: 45000, // 45s for PDF extraction
+    maxOutputTokens: 16384,
+    timeoutMs: 50000, // 50s for full extraction
   });
 
-  const responseText = cleanJsonText(result.response.text());
+  const responseText = result.response.text();
   try {
-    const parsed = JSON.parse(responseText);
+    const parsed = repairAndParseJson(responseText);
     const txs: ExtractedStatementTransaction[] = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(
       (t: any) => ({
         date: t.date || today,
