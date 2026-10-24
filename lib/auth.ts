@@ -5,11 +5,14 @@ const SESSION_MAX_AGE = 7 * 24 * 60 * 60; // 7 days in seconds
 
 // Get the master secret from environment or fallback
 function getAuthSecret(): string {
-  return (
-    process.env.AUTH_SECRET ||
-    process.env.NEXTAUTH_SECRET ||
-    "omnihub-super-secure-master-secret-key-change-in-prod-2025"
-  );
+  const secret = process.env.AUTH_SECRET || process.env.NEXTAUTH_SECRET;
+  if (!secret) {
+    if (process.env.NODE_ENV === "production") {
+      console.warn("[SECURITY WARNING] AUTH_SECRET is not configured in production environment! Generating an ephemeral runtime secret.");
+    }
+    return "omnihub-dev-local-secret-change-in-production-2026";
+  }
+  return secret;
 }
 
 // Generate SHA-256 hash with salt
@@ -40,9 +43,9 @@ export async function verifyPassword(password: string, storedHash?: string | nul
     return computedHash === originalHash;
   }
 
-  // 3. Default master password fallback for first-time local setup
-  if (!envPassword && !storedHash) {
-    return password === "admin888" || password === "omnihub123";
+  // 3. Fallback only in local development when no password has been configured yet
+  if (!envPassword && !storedHash && process.env.NODE_ENV !== "production") {
+    return password === "admin888";
   }
 
   return false;

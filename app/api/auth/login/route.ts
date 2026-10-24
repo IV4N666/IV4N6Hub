@@ -19,9 +19,9 @@ export async function POST(request: NextRequest) {
     // Rate-limit anti-brute force delay
     await new Promise((resolve) => setTimeout(resolve, 300));
 
-    // 1. Fast-path: Check against ADMIN_PASSWORD env or default passcode first
-    const envPassword = process.env.ADMIN_PASSWORD || "admin888";
-    if (password.trim() === envPassword.trim() || password.trim() === "admin888" || password.trim() === "omnihub123") {
+    // 1. Fast-path: Check against ADMIN_PASSWORD env if configured
+    const envPassword = process.env.ADMIN_PASSWORD;
+    if (envPassword && password.trim() === envPassword.trim()) {
       const token = await createSessionToken();
       const response = NextResponse.json({
         success: true,

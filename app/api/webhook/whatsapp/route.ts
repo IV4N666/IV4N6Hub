@@ -36,7 +36,7 @@ export async function POST(request: NextRequest) {
       if (message) {
         const fromNumber = String(message.from || "").replace(/[^0-9]/g, "");
 
-        // 1. Check Sender Phone Number Whitelist
+        // 1. Check Sender Phone Number Whitelist (Deny by default for security)
         const appConfig = await db.appConfig.findFirst();
         const allowedNumbersRaw =
           process.env.ALLOWED_PHONE_NUMBERS ||
@@ -44,19 +44,23 @@ export async function POST(request: NextRequest) {
           appConfig?.whatsappPhone ||
           "";
 
-        if (allowedNumbersRaw.trim()) {
-          const allowedList = allowedNumbersRaw
-            .split(",")
-            .map((n) => n.replace(/[^0-9]/g, "").trim())
-            .filter(Boolean);
+        const allowedList = allowedNumbersRaw
+          .split(",")
+          .map((n) => n.replace(/[^0-9]/g, "").trim())
+          .filter(Boolean);
 
-          const isSenderAllowed = allowedList.some((allowed) => fromNumber.includes(allowed) || allowed.includes(fromNumber));
+        // Deny by default if whitelist is not set
+        if (allowedList.length === 0) {
+          console.warn(`[Security Alert] Rejected WhatsApp message from ${fromNumber}: No whitelist configured.`);
+          return NextResponse.json({ success: true, status: "IGNORED_NO_WHITELIST_CONFIGURED" });
+        }
 
-          if (!isSenderAllowed) {
-            console.warn(`[Security Alert] Rejected WhatsApp message from unauthorized sender: ${fromNumber}`);
-            // Return 200 to acknowledge webhook event but do not process
-            return NextResponse.json({ success: true, status: "IGNORED_UNAUTHORIZED_SENDER" });
-          }
+        // Strict exact phone number match (prevents substring spoofing)
+        const isSenderAllowed = allowedList.some((allowed) => allowed === fromNumber);
+
+        if (!isSenderAllowed) {
+          console.warn(`[Security Alert] Rejected WhatsApp message from unauthorized sender: ${fromNumber}`);
+          return NextResponse.json({ success: true, status: "IGNORED_UNAUTHORIZED_SENDER" });
         }
 
         let messageText = "";

@@ -59,7 +59,7 @@ export async function GET() {
     const usedMemGb = (usedMem / (1024 * 1024 * 1024)).toFixed(2);
     const freeMemGb = (freeMem / (1024 * 1024 * 1024)).toFixed(2);
 
-    // Network Interfaces summary
+    // Network Interfaces summary (mask last octet for privacy)
     const networkInterfaces = os.networkInterfaces();
     const activeIps: Array<{ interfaceName: string; address: string; family: string }> = [];
 
@@ -67,9 +67,10 @@ export async function GET() {
       if (netList) {
         for (const net of netList) {
           if (!net.internal && net.family === "IPv4") {
+            const maskedAddress = net.address.replace(/\.\d+$/, ".*");
             activeIps.push({
               interfaceName: name,
-              address: net.address,
+              address: maskedAddress,
               family: net.family,
             });
           }

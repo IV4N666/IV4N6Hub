@@ -122,52 +122,56 @@ export async function POST(request: NextRequest) {
         ? "Income"
         : "Expense";
 
-    const transaction = await db.transaction.create({
-      data: {
-        amount: numAmount,
-        type: type === "INCOME" ? "INCOME" : type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
-        category: validCategory,
-        subCategory: subCategory || null,
-        tags: tags || null,
-        description: description?.trim() || defaultDesc,
-        source,
-        rawInput,
-        currency,
-        accountId: accountId || null,
-        toAccountId: type === "TRANSFER" ? toAccountId || null : null,
-        date: new Date(date),
-      },
-      include: {
-        account: true,
-        toAccount: true,
-      },
-    });
+    // Atomically create Transaction and update Account balances
+    const transaction = await db.$transaction(async (txClient) => {
+      const createdTx = await txClient.transaction.create({
+        data: {
+          amount: numAmount,
+          type: type === "INCOME" ? "INCOME" : type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
+          category: validCategory,
+          subCategory: subCategory || null,
+          tags: tags || null,
+          description: description?.trim() || defaultDesc,
+          source,
+          rawInput,
+          currency,
+          accountId: accountId || null,
+          toAccountId: type === "TRANSFER" ? toAccountId || null : null,
+          date: new Date(date),
+        },
+        include: {
+          account: true,
+          toAccount: true,
+        },
+      });
 
-    // Automatically update Account balances
-    if (type === "TRANSFER") {
-      if (accountId) {
-        await db.account.update({
+      if (type === "TRANSFER") {
+        if (accountId) {
+          await txClient.account.update({
+            where: { id: accountId },
+            data: { balance: { decrement: numAmount } },
+          });
+        }
+        if (toAccountId) {
+          await txClient.account.update({
+            where: { id: toAccountId },
+            data: { balance: { increment: numAmount } },
+          });
+        }
+      } else if (type === "EXPENSE" && accountId) {
+        await txClient.account.update({
           where: { id: accountId },
           data: { balance: { decrement: numAmount } },
-        }).catch(() => {});
-      }
-      if (toAccountId) {
-        await db.account.update({
-          where: { id: toAccountId },
+        });
+      } else if (type === "INCOME" && accountId) {
+        await txClient.account.update({
+          where: { id: accountId },
           data: { balance: { increment: numAmount } },
-        }).catch(() => {});
+        });
       }
-    } else if (type === "EXPENSE" && accountId) {
-      await db.account.update({
-        where: { id: accountId },
-        data: { balance: { decrement: numAmount } },
-      }).catch(() => {});
-    } else if (type === "INCOME" && accountId) {
-      await db.account.update({
-        where: { id: accountId },
-        data: { balance: { increment: numAmount } },
-      }).catch(() => {});
-    }
+
+      return createdTx;
+    });
 
     return NextResponse.json({
       success: true,
@@ -324,38 +328,40 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const tx = await db.transaction.findUnique({ where: { id } });
-    if (tx) {
+    await db.$transaction(async (txClient) => {
+      const tx = await txClient.transaction.findUnique({ where: { id } });
+      if (!tx) return;
+
       // Revert account balance changes
       if (tx.type === "TRANSFER") {
         if (tx.accountId) {
-          await db.account.update({
+          await txClient.account.update({
             where: { id: tx.accountId },
             data: { balance: { increment: tx.amount } },
-          }).catch(() => {});
+          });
         }
         if (tx.toAccountId) {
-          await db.account.update({
+          await txClient.account.update({
             where: { id: tx.toAccountId },
             data: { balance: { decrement: tx.amount } },
-          }).catch(() => {});
+          });
         }
       } else if (tx.type === "EXPENSE" && tx.accountId) {
-        await db.account.update({
+        await txClient.account.update({
           where: { id: tx.accountId },
           data: { balance: { increment: tx.amount } },
-        }).catch(() => {});
+        });
       } else if (tx.type === "INCOME" && tx.accountId) {
-        await db.account.update({
+        await txClient.account.update({
           where: { id: tx.accountId },
           data: { balance: { decrement: tx.amount } },
-        }).catch(() => {});
+        });
       }
 
-      await db.transaction.delete({
+      await txClient.transaction.delete({
         where: { id },
       });
-    }
+    });
 
     return NextResponse.json({
       success: true,
