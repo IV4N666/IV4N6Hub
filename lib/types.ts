@@ -146,7 +146,8 @@ export type SmartIntentType =
   | "NOTE"
   | "CLARIFICATION"
   | "CANCEL"
-  | "UPDATE_TRANSACTION";
+  | "UPDATE_TRANSACTION"
+  | "DATA_QUERY";
 
 export interface ConversationMessage {
   role: "user" | "assistant";

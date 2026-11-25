@@ -117,7 +117,8 @@ interface ChatMessage {
     | "CLARIFICATION"
     | "CANCELLED"
     | "UPDATED"
-    | "RECONCILIATION_REPORT";
+    | "RECONCILIATION_REPORT"
+    | "DATA_QUERY_REPORT";
   timestamp: string;
 }
 
@@ -427,7 +428,54 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           return;
         }
 
-        if (data.success && data.statement) {
+        if (data.success && data.docType === "RECEIPT_SINGLE" && data.receipt) {
+          const r = data.receipt;
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: "bot",
+              type: "text",
+              text: data.message || `🧾 已扫描小票并入账：${r.merchant}`,
+              transactionId: data.transaction?.id,
+              parsedData: {
+                amount: r.totalAmount,
+                category: r.category,
+                description: r.merchant,
+                currency: r.currency || currency,
+                type: "EXPENSE",
+              },
+              uploadStatus: "SAVED",
+              timestamp: now,
+            },
+          ]);
+          if (onExpenseLogged) onExpenseLogged();
+        } else if (data.success && data.docType === "TODO_OR_NOTE") {
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: String(Date.now() + 1),
+              sender: "bot",
+              type: "text",
+              text: data.message || "📝 已从图片/文件提取笔记与待办！",
+              noteId: data.note?.id,
+              todoId: data.todos?.[0]?.id,
+              parsedData: {
+                amount: 0,
+                category: data.todos?.length > 0 ? "Tasks" : "Notes",
+                description: data.note?.title || data.todos?.[0]?.title || "文件识别",
+                currency,
+                type: data.todos?.length > 0 ? "TODO" : "NOTE",
+                todoTitle: data.todos?.[0]?.title,
+                noteTitle: data.note?.title,
+                noteContent: data.note?.content,
+              },
+              uploadStatus: data.todos?.length > 0 ? "TODO_SAVED" : "NOTE_SAVED",
+              timestamp: now,
+            },
+          ]);
+          if (onExpenseLogged) onExpenseLogged();
+        } else if (data.success && data.statement) {
           const s = data.summary;
           const botReportText = `📊 账单核对完成！为您比对了 ${s.totalStatementTransactions} 笔交易记录：\n🟢 已匹配一致：${s.matchedCount} 笔\n🟡 发现金额差异：${s.discrepancyCount} 笔\n🔵 发现漏记账：${s.missingCount} 笔\n❓ 需向您确认：${s.ambiguousCount} 笔`;
 
@@ -871,6 +919,22 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         ]);
         if (onExpenseLogged) onExpenseLogged();
       }
+      // 0.2. Data Query / Analytics Intent
+      else if (data.intent === "DATA_QUERY" || parsed.intent === "DATA_QUERY") {
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: String(Date.now() + 1),
+            sender: "bot",
+            type: "text",
+            text: data.message || parsed.replyMessage || "📊 已为您查询相关数据。",
+            intent: "DATA_QUERY",
+            transcript: parsed.transcript,
+            uploadStatus: "DATA_QUERY_REPORT",
+            timestamp,
+          },
+        ]);
+      }
       // 0.5. Update Transaction Intent / Enrichment of Recent Record
       else if (data.intent === "UPDATE_TRANSACTION" || data.isUpdate) {
         setMessages((prev) => [
@@ -1104,7 +1168,8 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   };
 
   const quickSamples = [
-    "🍔 Lunch with colleagues 18.50 with cash",
+    "📊 我这个月总共花了多少钱？各分类明细是什么？ (AI查账统计)",
+    "💳 目前我各个账户的余额还有多少？ (查资产余额)",
     "🍜 吃午餐花了 15 块半 (餐饮美食)",
     "⛽ 用现金打油 50 块 (车汽油费)",
     "🍢 深夜吃宵夜 35 块 (宵夜/美食)",
@@ -1948,11 +2013,11 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
           </div>
         )}
 
-        {/* Hidden File Input for Statement Upload */}
+        {/* Hidden File Input for Universal File/Image/Statement Upload */}
         <input
           type="file"
           ref={fileInputRef}
-          accept="application/pdf,image/png,image/jpeg,image/webp"
+          accept="application/pdf,image/png,image/jpeg,image/webp,text/csv,text/plain,.csv,.txt,.json"
           onChange={handleFileSelect}
           className="hidden"
         />

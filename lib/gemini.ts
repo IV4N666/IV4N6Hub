@@ -167,15 +167,94 @@ export function isModelDeprecated(name: string): boolean {
   );
 }
 
-// Prioritized list of active, supported Gemini models
+// Prioritized list of active, supported Gemini models (optimized for $10 monthly AI Studio credit efficiency)
 export const CANDIDATE_MODELS = [
-  "gemini-3.1-pro-preview",
+  "gemini-4-hydrogen",
   "gemini-3.8-flash",
+  "gemini-3.5-flash-lite",
+  "gemini-3.1-pro-preview",
   "gemini-3.7-flash",
   "gemini-3.5-flash",
   "gemini-3.1-flash-lite",
   "gemini-3-flash-preview",
 ];
+
+export interface GeminiCreditUsageStats {
+  month: string; // e.g. "2026-11"
+  monthlyCreditLimitUsd: number;
+  estimatedSpendUsd: number;
+  remainingCreditUsd: number;
+  totalCalls: number;
+  totalPromptTokens: number;
+  totalCandidateTokens: number;
+  lastModelUsed: string;
+  lastCallAt: string;
+}
+
+// Track monthly token & $10 credit consumption in memory + persisted via Note (__SYSTEM_AI_CREDIT_TRACKER__)
+function getCurrentMonthKey(): string {
+  return getTodayDateString().slice(0, 7);
+}
+
+let inMemoryUsage: GeminiCreditUsageStats = {
+  month: getCurrentMonthKey(),
+  monthlyCreditLimitUsd: 10.0,
+  estimatedSpendUsd: 0,
+  remainingCreditUsd: 10.0,
+  totalCalls: 0,
+  totalPromptTokens: 0,
+  totalCandidateTokens: 0,
+  lastModelUsed: "gemini-4-hydrogen",
+  lastCallAt: new Date().toISOString(),
+};
+
+export function estimateCallCostUsd(
+  modelName: string,
+  promptTokens: number,
+  candidateTokens: number
+): number {
+  const isPro = modelName.toLowerCase().includes("pro") || modelName.toLowerCase().includes("argon") || modelName.toLowerCase().includes("carbon");
+  // Standard Tier-1 pricing per 1M tokens: Flash/Hydrogen ~$0.15 in / $0.60 out; Pro ~$1.25 in / $5.00 out
+  const inputRatePerM = isPro ? 1.25 : 0.15;
+  const outputRatePerM = isPro ? 5.0 : 0.60;
+  const cost = (promptTokens / 1_000_000) * inputRatePerM + (candidateTokens / 1_000_000) * outputRatePerM;
+  return Number(Math.max(cost, 0.00001).toFixed(6));
+}
+
+export function getInMemoryCreditUsage(): GeminiCreditUsageStats {
+  const curMonth = getCurrentMonthKey();
+  if (inMemoryUsage.month !== curMonth) {
+    inMemoryUsage = {
+      month: curMonth,
+      monthlyCreditLimitUsd: 10.0,
+      estimatedSpendUsd: 0,
+      remainingCreditUsd: 10.0,
+      totalCalls: 0,
+      totalPromptTokens: 0,
+      totalCandidateTokens: 0,
+      lastModelUsed: inMemoryUsage.lastModelUsed,
+      lastCallAt: new Date().toISOString(),
+    };
+  }
+  return inMemoryUsage;
+}
+
+export function recordGeminiTokenUsage(
+  modelName: string,
+  promptTokens = 450,
+  candidateTokens = 200
+): GeminiCreditUsageStats {
+  const stats = getInMemoryCreditUsage();
+  const cost = estimateCallCostUsd(modelName, promptTokens, candidateTokens);
+  stats.totalCalls += 1;
+  stats.totalPromptTokens += promptTokens;
+  stats.totalCandidateTokens += candidateTokens;
+  stats.estimatedSpendUsd = Number((stats.estimatedSpendUsd + cost).toFixed(5));
+  stats.remainingCreditUsd = Number(Math.max(0, stats.monthlyCreditLimitUsd - stats.estimatedSpendUsd).toFixed(4));
+  stats.lastModelUsed = modelName;
+  stats.lastCallAt = new Date().toISOString();
+  return stats;
+}
 
 // In-memory cache for the resolved model per API key (1 hour TTL, max 50 keys)
 const MODEL_CACHE_MAX = 50;
@@ -308,6 +387,12 @@ export async function generateContentWithFallback(
       // Successfully processed! Cache this model as working
       setCachedModel(apiKey, modelName);
       result.model = modelName;
+      try {
+        const usageMeta = result?.response?.usageMetadata;
+        const pTokens = Number(usageMeta?.promptTokenCount) || 500;
+        const cTokens = Number(usageMeta?.candidatesTokenCount) || 220;
+        recordGeminiTokenUsage(modelName, pTokens, cTokens);
+      } catch {}
       return result;
     } catch (err: any) {
       lastError = err;
@@ -480,9 +565,14 @@ Analyze the user's intent and classify into one of the following:
      - category: category (best match or keep previous)
      - replyMessage: e.g. "✅ 已为您补充更新该笔消费：McDonald's #mcd"
 
+7. "DATA_QUERY":
+   - The user is asking a question about their financial data, spending stats, account balances, recent transactions, todos, or notes, OR asking to search/filter/summarize records!
+   - Examples: "我这个月花了多少钱？", "查一下最近5笔消费", "我打油和宵夜花了多少？", "目前各个账户余额多少？", "有哪些待办还没完成？", "How much did I spend on Food this month?", "Show my recent transactions".
+   - Set intent to "DATA_QUERY", amount to 0.
+
 Return ONLY a valid JSON conforming to this schema:
 {
-  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL" | "UPDATE_TRANSACTION",
+  "intent": "EXPENSE" | "INCOME" | "TRANSFER" | "TODO" | "NOTE" | "CLARIFICATION" | "CANCEL" | "UPDATE_TRANSACTION" | "DATA_QUERY",
   "cancelTarget": "TRANSACTION" | "TODO" | "NOTE" | "LAST" or null,
   "amount": number (positive float, 0 if not an expense or if missing),
   "type": "EXPENSE" | "INCOME" | "TRANSFER",
@@ -914,7 +1004,35 @@ function fallbackHeuristicParser(
   const lower = text.toLowerCase();
   const today = getTodayDateString();
 
-  // 0. Check Cancel / Undo Intent
+  // 0. Check Data Query / Analytics Intent
+  if (
+    text.includes("花了多少") ||
+    text.includes("总支出") ||
+    text.includes("查一下") ||
+    text.includes("查询") ||
+    text.includes("余额") ||
+    text.includes("多少待办") ||
+    text.includes("统计") ||
+    text.includes("最近几笔") ||
+    lower.includes("how much") ||
+    lower.includes("balance") ||
+    lower.includes("summary") ||
+    lower.includes("show my")
+  ) {
+    return {
+      intent: "DATA_QUERY",
+      amount: 0,
+      type: "EXPENSE",
+      category: "Other",
+      description: text,
+      currency: defaultCurrency,
+      date: today,
+      confidence: 0.95,
+      replyMessage: "正在为您查询账本与数据统计...",
+    };
+  }
+
+  // 0.5 Check Cancel / Undo Intent
   if (
     lower.includes("cancel") ||
     lower.includes("undo") ||
@@ -1387,5 +1505,354 @@ Return ONLY a valid JSON object matching this schema:
     console.error("Failed to parse statement JSON from Gemini:", responseText);
     throw new Error(`Failed to parse bank statement: ${err.message}`);
   }
+}
+
+export interface SmartDocumentClassification {
+  docType: "RECEIPT_SINGLE" | "BANK_STATEMENT" | "TODO_OR_NOTE";
+  receipt?: OCRReceiptResult;
+  statement?: ExtractedStatement;
+  noteTitle?: string;
+  noteContent?: string;
+  todos?: Array<{ title: string; dueDate?: string; priority?: "HIGH" | "MEDIUM" | "LOW" }>;
+  summaryMessage: string;
+}
+
+/**
+ * Universal image / file / CSV analyzer for IV4N6Hub Assistant:
+ * Automatically distinguishes between:
+ * - Single shopping receipt / transfer slip photo -> RECEIPT_SINGLE
+ * - Multi-row bank statement PDF / long screenshot / CSV / Excel text -> BANK_STATEMENT
+ * - Screenshot of notes / task list / document memo -> TODO_OR_NOTE
+ */
+export async function analyzeUniversalFileWithAI(
+  fileBase64: string,
+  mimeType: string,
+  fileName: string,
+  userApiKey?: string,
+  defaultCurrency = "MYR",
+  accounts: SmartAccountInfo[] = []
+): Promise<SmartDocumentClassification> {
+  const apiKey = userApiKey || process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    throw new Error("请先在 Settings 页面配置 Google Gemini API Key 以启用智能图片与文件识别！");
+  }
+
+  const lowerName = (fileName || "").toLowerCase();
+  const isCsvOrText =
+    lowerName.endsWith(".csv") ||
+    lowerName.endsWith(".txt") ||
+    lowerName.endsWith(".tsv") ||
+    lowerName.endsWith(".json") ||
+    mimeType.includes("csv") ||
+    mimeType.includes("text/");
+
+  const genAI = new GoogleGenerativeAI(apiKey);
+  const today = getTodayDateString();
+  const accountListStr =
+    accounts.length > 0 ? accounts.map((a) => `- ${a.name} (${a.type || "Account"})`).join("\n") : "None";
+
+  if (isCsvOrText) {
+    let cleanBase64 = (fileBase64 || "").trim();
+    if (cleanBase64.includes(",")) cleanBase64 = cleanBase64.split(",")[1].trim();
+    const rawTextContent = Buffer.from(cleanBase64, "base64").toString("utf-8").slice(0, 45000);
+
+    const csvPrompt = `You are the IV4N6Hub Financial Data & File Processor.
+The user uploaded a text/CSV/tabular file named "${fileName}".
+Current Date: ${today}
+Default Currency: ${defaultCurrency}
+Standard Categories: ${STANDARD_CATEGORIES.join(", ")}
+
+File Content:
+"""
+${rawTextContent}
+"""
+
+Determine whether this file contains financial transactions (like a CSV bank statement/expense table) or notes/to-do tasks.
+Return ONLY valid JSON:
+{
+  "docType": "BANK_STATEMENT" | "TODO_OR_NOTE",
+  "bankName": string (e.g. "${fileName}"),
+  "currency": "${defaultCurrency}",
+  "totalDebit": number,
+  "totalCredit": number,
+  "transactions": [
+    {
+      "date": "YYYY-MM-DD",
+      "amount": number (positive),
+      "type": "EXPENSE" | "INCOME" | "TRANSFER",
+      "description": string,
+      "rawNarration": string,
+      "category": string,
+      "subCategory": string | null,
+      "confidence": 0.95,
+      "isAmbiguous": boolean,
+      "ambiguityReason": string | null
+    }
+  ],
+  "noteTitle": string | null,
+  "noteContent": string | null,
+  "todos": [{ "title": string, "dueDate": "YYYY-MM-DD" | null, "priority": "HIGH" | "MEDIUM" | "LOW" }],
+  "summaryMessage": string (in Chinese)
+}`;
+
+    const result = await generateContentWithFallback(genAI, apiKey, csvPrompt, {
+      responseMimeType: "application/json",
+      temperature: 0.1,
+      maxOutputTokens: 16384,
+      timeoutMs: 45000,
+    });
+    const parsed = repairAndParseJson(result.response.text());
+    if (parsed.docType === "TODO_OR_NOTE" && (!parsed.transactions || parsed.transactions.length === 0)) {
+      return {
+        docType: "TODO_OR_NOTE",
+        noteTitle: parsed.noteTitle || fileName,
+        noteContent: parsed.noteContent || rawTextContent.slice(0, 1000),
+        todos: Array.isArray(parsed.todos) ? parsed.todos : [],
+        summaryMessage: parsed.summaryMessage || `📄 已从文件 ${fileName} 提取笔记与待办数据！`,
+      };
+    }
+
+    const txs: ExtractedStatementTransaction[] = (Array.isArray(parsed.transactions) ? parsed.transactions : []).map(
+      (t: any) => ({
+        date: t.date || today,
+        amount: Math.abs(Number(t.amount) || 0),
+        type: t.type === "INCOME" ? "INCOME" : t.type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
+        description: t.description || t.rawNarration || "CSV Entry",
+        rawNarration: t.rawNarration || t.description || "",
+        category: STANDARD_CATEGORIES.includes(t.category) ? t.category : "Other",
+        subCategory: t.subCategory || undefined,
+        confidence: Number(t.confidence) || 0.9,
+        isAmbiguous: Boolean(t.isAmbiguous),
+        ambiguityReason: t.ambiguityReason || undefined,
+      })
+    );
+
+    return {
+      docType: "BANK_STATEMENT",
+      statement: {
+        bankName: parsed.bankName || fileName,
+        currency: parsed.currency || defaultCurrency,
+        totalDebit: Number(parsed.totalDebit) || 0,
+        totalCredit: Number(parsed.totalCredit) || 0,
+        transactions: txs,
+      },
+      summaryMessage: parsed.summaryMessage || `📊 已解析数据文件 ${fileName}，共识别 ${txs.length} 条流水！`,
+    };
+  }
+
+  // For PDFs, directly run bank statement parser
+  if (lowerName.endsWith(".pdf") || mimeType.includes("pdf")) {
+    const stmt = await parseBankStatementWithAI(fileBase64, "application/pdf", apiKey, defaultCurrency, accounts);
+    return {
+      docType: "BANK_STATEMENT",
+      statement: stmt,
+      summaryMessage: `📊 已解析 PDF 账单，共识别 ${stmt.transactions.length} 笔交易！`,
+    };
+  }
+
+  // For images (PNG/JPG/WEBP): Ask Gemini Vision to classify whether it's a single receipt, multi-row bank statement, or memo/todo image!
+  let cleanBase64 = (fileBase64 || "").trim();
+  if (cleanBase64.includes(",")) cleanBase64 = cleanBase64.split(",")[1].trim();
+  cleanBase64 = cleanBase64.replace(/\s+/g, "");
+
+  let cleanMime = "image/jpeg";
+  if (cleanBase64.startsWith("iVBORw0KGgo") || lowerName.endsWith(".png") || mimeType.includes("png")) {
+    cleanMime = "image/png";
+  } else if (lowerName.endsWith(".webp") || mimeType.includes("webp")) {
+    cleanMime = "image/webp";
+  }
+
+  const visionPrompt = `You are the IV4N6Hub Multimodal Vision Assistant.
+Examine this uploaded image carefully and classify it into ONE of 3 document types:
+1. "RECEIPT_SINGLE": A photo/screenshot of a single store receipt, restaurant bill, invoice, e-wallet payment transfer confirmation slip (e.g. single DuitNow / Touch 'n Go / GrabPay payment receipt for 1 purchase).
+2. "BANK_STATEMENT": A screenshot or page of a transaction history list / bank statement / e-wallet ledger showing MULTIPLE different transactions across dates.
+3. "TODO_OR_NOTE": A photo/screenshot of a to-do list, schedule, memo, note, password, or general non-financial image/document.
+
+Current Date: ${today}
+Default Currency: ${defaultCurrency}
+User Accounts:
+${accountListStr}
+Standard Categories:
+${STANDARD_CATEGORIES.join(", ")}
+
+Return ONLY valid JSON:
+{
+  "docType": "RECEIPT_SINGLE" | "BANK_STATEMENT" | "TODO_OR_NOTE",
+  "receipt": {
+    "merchant": string,
+    "totalAmount": number,
+    "currency": string,
+    "date": "YYYY-MM-DD",
+    "category": string,
+    "tax": number,
+    "items": [{ "name": string, "price": number, "quantity": number }],
+    "notes": string
+  } (fill if RECEIPT_SINGLE, else null),
+  "statement": {
+    "bankName": string,
+    "currency": string,
+    "totalDebit": number,
+    "totalCredit": number,
+    "transactions": [
+      {
+        "date": "YYYY-MM-DD",
+        "amount": number,
+        "type": "EXPENSE" | "INCOME" | "TRANSFER",
+        "description": string,
+        "rawNarration": string,
+        "category": string,
+        "subCategory": string | null,
+        "confidence": number,
+        "isAmbiguous": boolean,
+        "ambiguityReason": string | null
+      }
+    ]
+  } (fill if BANK_STATEMENT, else null),
+  "noteTitle": string | null (fill if TODO_OR_NOTE),
+  "noteContent": string | null (fill if TODO_OR_NOTE),
+  "todos": [{ "title": string, "dueDate": "YYYY-MM-DD" | null, "priority": "HIGH" | "MEDIUM" | "LOW" }] (fill if TODO_OR_NOTE),
+  "summaryMessage": string (friendly Chinese summary of what was recognized)
+}`;
+
+  const result = await generateContentWithFallback(
+    genAI,
+    apiKey,
+    [visionPrompt, { inlineData: { data: cleanBase64, mimeType: cleanMime } }],
+    {
+      responseMimeType: "application/json",
+      temperature: 0.1,
+      maxOutputTokens: 16384,
+      timeoutMs: 45000,
+    }
+  );
+
+  const parsed = repairAndParseJson(result.response.text());
+
+  if (parsed.docType === "RECEIPT_SINGLE" && parsed.receipt && Number(parsed.receipt.totalAmount) > 0) {
+    const r = parsed.receipt;
+    return {
+      docType: "RECEIPT_SINGLE",
+      receipt: {
+        merchant: r.merchant || "Receipt Merchant",
+        totalAmount: Math.abs(Number(r.totalAmount) || 0),
+        currency: r.currency || defaultCurrency,
+        date: r.date || today,
+        category: STANDARD_CATEGORIES.includes(r.category) ? r.category : "Shopping & Groceries",
+        items: Array.isArray(r.items) ? r.items : [],
+        tax: Number(r.tax) || 0,
+        notes: r.notes || r.merchant || "小票扫描记账",
+      },
+      summaryMessage:
+        parsed.summaryMessage ||
+        `🧾 识别到单张小票/回执：${r.merchant} (${r.currency || defaultCurrency} ${Number(r.totalAmount).toFixed(2)})`,
+    };
+  }
+
+  if (parsed.docType === "TODO_OR_NOTE" && (!parsed.statement?.transactions || parsed.statement.transactions.length === 0)) {
+    return {
+      docType: "TODO_OR_NOTE",
+      noteTitle: parsed.noteTitle || "图片识别便签",
+      noteContent: parsed.noteContent || parsed.summaryMessage || "从图片提取的信息",
+      todos: Array.isArray(parsed.todos) ? parsed.todos : [],
+      summaryMessage: parsed.summaryMessage || "📝 已识别图片中的文字/待办信息并为您归档！",
+    };
+  }
+
+  // Otherwise treat as BANK_STATEMENT (or if receipt had multiple transactions)
+  const rawTxs = parsed.statement?.transactions || [];
+  const txs: ExtractedStatementTransaction[] = rawTxs.map((t: any) => ({
+    date: t.date || today,
+    amount: Math.abs(Number(t.amount) || 0),
+    type: t.type === "INCOME" ? "INCOME" : t.type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
+    description: t.description || t.rawNarration || "Transaction",
+    rawNarration: t.rawNarration || t.description || "",
+    category: STANDARD_CATEGORIES.includes(t.category) ? t.category : "Other",
+    subCategory: t.subCategory || undefined,
+    confidence: Number(t.confidence) || 0.88,
+    isAmbiguous: Boolean(t.isAmbiguous),
+    ambiguityReason: t.ambiguityReason || undefined,
+  }));
+
+  return {
+    docType: "BANK_STATEMENT",
+    statement: {
+      bankName: parsed.statement?.bankName || "账单流水截图",
+      currency: parsed.statement?.currency || defaultCurrency,
+      totalDebit: Number(parsed.statement?.totalDebit) || 0,
+      totalCredit: Number(parsed.statement?.totalCredit) || 0,
+      transactions: txs,
+    },
+    summaryMessage: parsed.summaryMessage || `📊 已识别出 ${txs.length} 笔账单流水记录！`,
+  };
+}
+
+/**
+ * Answers natural language data management & financial analytics queries using live DB snapshot.
+ */
+export async function answerDataQueryWithAI(
+  question: string,
+  dbSnapshot: {
+    month: string;
+    defaultCurrency: string;
+    totalMonthExpense: number;
+    totalMonthIncome: number;
+    categoryTotals: Record<string, number>;
+    accounts: Array<{ name: string; type: string; balance: number; currency: string }>;
+    recentTransactions: Array<{ date: string; description: string; amount: number; type: string; category: string; subCategory?: string | null; accountName?: string | null }>;
+    pendingTodos: Array<{ title: string; priority: string; dueDate?: string | null }>;
+    recentNotes: Array<{ title: string; content: string; category: string }>;
+  },
+  userApiKey?: string
+): Promise<string> {
+  const apiKey = userApiKey || process.env.GEMINI_API_KEY;
+  if (apiKey) {
+    try {
+      const genAI = new GoogleGenerativeAI(apiKey);
+      const prompt = `你是 IV4N6Hub 的私人财务与数据管家 AI。请根据以下实时数据库快照，用清晰、亲切、带 Emoji 的中文回答用户的查询或数据管理请求。
+
+用户问题: "${question}"
+
+【本月 (${dbSnapshot.month}) 财务汇总 (${dbSnapshot.defaultCurrency})】:
+- 本月总支出: ${dbSnapshot.defaultCurrency} ${dbSnapshot.totalMonthExpense.toFixed(2)}
+- 本月总收入: ${dbSnapshot.defaultCurrency} ${dbSnapshot.totalMonthIncome.toFixed(2)}
+- 净结余: ${dbSnapshot.defaultCurrency} ${(dbSnapshot.totalMonthIncome - dbSnapshot.totalMonthExpense).toFixed(2)}
+- 各分类支出明细: ${JSON.stringify(dbSnapshot.categoryTotals)}
+
+【当前账户资产余额】:
+${dbSnapshot.accounts.map((a) => `- ${a.name} (${a.type}): ${a.currency} ${a.balance.toFixed(2)}`).join("\n") || "暂无账户"}
+
+【最近 15 笔交易流水】:
+${dbSnapshot.recentTransactions.map((t) => `- [${t.date}] ${t.type === "INCOME" ? "+" : "-"}${dbSnapshot.defaultCurrency} ${t.amount.toFixed(2)} | ${t.description} (${t.category}${t.subCategory ? ` / ${t.subCategory}` : ""})${t.accountName ? ` [${t.accountName}]` : ""}`).join("\n") || "暂无交易"}
+
+【未完成待办任务 (${dbSnapshot.pendingTodos.length} 项)】:
+${dbSnapshot.pendingTodos.map((td) => `- [${td.priority}] ${td.title}${td.dueDate ? ` (截止: ${td.dueDate})` : ""}`).join("\n") || "全部已完成"}
+
+【最近便签备忘】:
+${dbSnapshot.recentNotes.map((n) => `- ${n.title}: ${n.content.slice(0, 80)}`).join("\n") || "暂无便签"}
+
+要求：
+1. 直接给出准确的数字、列表或统计结论，排版清晰（使用项目符号）。
+2. 不要编造快照之外的数据。`;
+
+      const result = await generateContentWithFallback(genAI, apiKey, prompt, {
+        temperature: 0.2,
+        maxOutputTokens: 1200,
+      });
+      return result.response.text().trim();
+    } catch (e) {
+      console.warn("Data query AI fallback:", e);
+    }
+  }
+
+  // Fallback local summary without AI key
+  const catLines = Object.entries(dbSnapshot.categoryTotals)
+    .sort((a, b) => b[1] - a[1])
+    .map(([cat, amt]) => `• ${cat}: ${dbSnapshot.defaultCurrency} ${amt.toFixed(2)}`)
+    .join("\n");
+  const accLines = dbSnapshot.accounts
+    .map((a) => `• ${a.name}: ${a.currency} ${a.balance.toFixed(2)}`)
+    .join("\n");
+
+  return `📊 **${dbSnapshot.month} 账本实时数据汇总**\n\n💰 **本月收支**：\n• 总支出：${dbSnapshot.defaultCurrency} ${dbSnapshot.totalMonthExpense.toFixed(2)}\n• 总收入：${dbSnapshot.defaultCurrency} ${dbSnapshot.totalMonthIncome.toFixed(2)}\n\n📂 **分类支出**：\n${catLines || "• 暂无记录"}\n\n💳 **账户余额**：\n${accLines || "• 暂无账户"}\n\n📋 **待办事项**：共 ${dbSnapshot.pendingTodos.length} 项待完成`;
 }
 

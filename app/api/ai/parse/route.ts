@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { parseTextWithAI, parseAudioWithAI } from "@/lib/gemini";
+import { parseTextWithAI, parseAudioWithAI, answerDataQueryWithAI, getTodayDateString } from "@/lib/gemini";
 import { AIParsedExpense } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -93,7 +93,99 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 0. Handle Cancellation / Undo Intent
+    // 0. Handle DATA_QUERY / Natural Language Data Management & Analytics Intent
+    if (parsedResult.intent === "DATA_QUERY") {
+      const curMonth = getTodayDateString().slice(0, 7); // YYYY-MM
+      const [yearNum, monthNum] = curMonth.split("-").map(Number);
+      const startOfMonth = new Date(yearNum, monthNum - 1, 1);
+      const endOfMonth = new Date(yearNum, monthNum, 0, 23, 59, 59, 999);
+
+      const [monthTxs, allAccounts, recentTxs, pendingTodos, recentNotes] = await Promise.all([
+        db.transaction.findMany({
+          where: { date: { gte: startOfMonth, lte: endOfMonth } },
+        }),
+        db.account.findMany({
+          where: { isArchived: false },
+          orderBy: { balance: "desc" },
+        }),
+        db.transaction.findMany({
+          take: 15,
+          orderBy: { date: "desc" },
+          include: { account: true },
+        }),
+        db.todoTask.findMany({
+          where: { status: "PENDING" },
+          take: 10,
+          orderBy: { createdAt: "desc" },
+        }),
+        db.note.findMany({
+          take: 8,
+          orderBy: { createdAt: "desc" },
+        }),
+      ]);
+
+      let totalMonthExpense = 0;
+      let totalMonthIncome = 0;
+      const categoryTotals: Record<string, number> = {};
+
+      for (const tx of monthTxs) {
+        if (tx.type === "EXPENSE") {
+          totalMonthExpense += tx.amount;
+          categoryTotals[tx.category] = Number(((categoryTotals[tx.category] || 0) + tx.amount).toFixed(2));
+        } else if (tx.type === "INCOME") {
+          totalMonthIncome += tx.amount;
+        }
+      }
+
+      const queryAnswer = await answerDataQueryWithAI(
+        text || parsedResult.transcript || "本月财务与待办汇总",
+        {
+          month: curMonth,
+          defaultCurrency,
+          totalMonthExpense,
+          totalMonthIncome,
+          categoryTotals,
+          accounts: allAccounts.map((a) => ({
+            name: a.name,
+            type: a.type,
+            balance: a.balance,
+            currency: a.currency || defaultCurrency,
+          })),
+          recentTransactions: recentTxs.map((t) => ({
+            date: t.date.toISOString().split("T")[0],
+            description: t.description || t.category,
+            amount: t.amount,
+            type: t.type,
+            category: t.category,
+            subCategory: t.subCategory,
+            accountName: t.account?.name,
+          })),
+          pendingTodos: pendingTodos.map((td) => ({
+            title: td.title,
+            priority: td.priority,
+            dueDate: td.dueDate ? td.dueDate.toISOString().split("T")[0] : null,
+          })),
+          recentNotes: recentNotes.map((n) => ({
+            title: n.title,
+            content: n.content,
+            category: n.category,
+          })),
+        },
+        userApiKey
+      );
+
+      return NextResponse.json({
+        success: true,
+        intent: "DATA_QUERY",
+        parsed: {
+          ...parsedResult,
+          replyMessage: queryAnswer,
+        },
+        message: queryAnswer,
+      });
+    }
+
+    // 0.1 Handle Cancellation / Undo Intent
     if (parsedResult.intent === "CANCEL") {
       const target = parsedResult.cancelTarget || "LAST";
 

@@ -40,6 +40,16 @@ export default function SettingsPage() {
 
   const [isTestingKey, setIsTestingKey] = useState(false);
   const [testKeyResult, setTestKeyResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [aiCreditUsage, setAiCreditUsage] = useState<{
+    month: string;
+    monthlyCreditLimitUsd: number;
+    estimatedSpendUsd: number;
+    remainingCreditUsd: number;
+    totalCalls: number;
+    totalPromptTokens: number;
+    totalCandidateTokens: number;
+    lastModelUsed: string;
+  } | null>(null);
 
   const handleTestKey = async () => {
     setIsTestingKey(true);
@@ -74,6 +84,7 @@ export default function SettingsPage() {
           if (data.config.webhookSecret) setWebhookSecret(data.config.webhookSecret);
           if (data.config.whatsappPhone) setWhatsappPhone(data.config.whatsappPhone);
           if (data.config.allowedPhoneNumbers) setAllowedPhoneNumbers(data.config.allowedPhoneNumbers);
+          if (data.config.aiCreditUsage) setAiCreditUsage(data.config.aiCreditUsage);
         }
       })
       .catch((err) => console.error(err));
@@ -317,6 +328,50 @@ export default function SettingsPage() {
                 <span>{testKeyResult.message}</span>
               </div>
             )}
+
+            {/* Google AI Pro $10 Monthly Credit Tracker */}
+            <div className="mt-4 rounded-xl bg-slate-900/90 border border-purple-500/30 p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-purple-400" />
+                  <span className="text-xs font-bold text-white">
+                    Google One AI Pro • 每月 $10.00 USD API 赠金监控 ({aiCreditUsage?.month || "本月"})
+                  </span>
+                </div>
+                <a
+                  href="https://aistudio.google.com/apikey"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[11px] font-semibold text-purple-300 hover:text-purple-200 underline"
+                >
+                  打开 AI Studio 领赠金 / 管理 Key ↗
+                </a>
+              </div>
+
+              <div className="grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-lg bg-slate-950/70 p-2 border border-slate-800">
+                  <div className="text-[10px] text-slate-400">本月预估已用</div>
+                  <div className="text-sm font-black text-emerald-400">
+                    ${(aiCreditUsage?.estimatedSpendUsd ?? 0).toFixed(4)}
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-950/70 p-2 border border-slate-800">
+                  <div className="text-[10px] text-slate-400">剩余可用赠金</div>
+                  <div className="text-sm font-black text-purple-300">
+                    ${(aiCreditUsage?.remainingCreditUsd ?? 10.0).toFixed(2)} / $10.00
+                  </div>
+                </div>
+                <div className="rounded-lg bg-slate-950/70 p-2 border border-slate-800">
+                  <div className="text-[10px] text-slate-400">累计 AI 调用 / 模型</div>
+                  <div className="text-xs font-bold text-slate-200 truncate">
+                    {aiCreditUsage?.totalCalls ?? 0} 次 ({aiCreditUsage?.lastModelUsed || "gemini-4-hydrogen"})
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] text-slate-400">
+                💡 提示：将 AI Studio 中绑定了 Cloud Billing 赠金项目的 API Key 填入上方并保存，所有拍照识小票、PDF/CSV 对账单解析、语音记账与自然语言查账都会自动抵扣每月 $10 赠金（约合 20,000+ 次识别额度）。
+              </p>
+            </div>
           </div>
 
           <div>

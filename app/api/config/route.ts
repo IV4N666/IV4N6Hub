@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth";
+import { getInMemoryCreditUsage } from "@/lib/gemini";
 
 export const dynamic = "force-dynamic";
 
@@ -43,6 +44,7 @@ export async function GET() {
         hasGeminiKey: !!config.geminiApiKey || !!process.env.GEMINI_API_KEY,
         maskedGeminiKey: maskApiKey(config.geminiApiKey || process.env.GEMINI_API_KEY),
         hasAdminPassword: !!config.adminPasswordHash || !!process.env.ADMIN_PASSWORD,
+        aiCreditUsage: getInMemoryCreditUsage(),
       },
     });
   } catch (error: any) {

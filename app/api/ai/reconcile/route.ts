@@ -4,6 +4,7 @@ import {
   parseBankStatementWithAI,
   ExtractedStatementTransaction,
   parseTextWithAI,
+  analyzeUniversalFileWithAI,
 } from "@/lib/gemini";
 
 export const dynamic = "force-dynamic";
@@ -75,20 +76,114 @@ export async function POST(request: NextRequest) {
         select: { id: true, name: true, type: true },
       });
 
-      // Parse with Gemini Multimodal AI
+      // Universal AI File & Image Analyzer (Auto-detects Single Receipt vs Multi-row Statement vs Todo/Note)
       let statement;
       try {
-        statement = await parseBankStatementWithAI(
+        const smartDoc = await analyzeUniversalFileWithAI(
           fileBase64,
           resolvedMime,
+          fileName || "uploaded-file",
           userApiKey,
           currency,
           accounts
         );
+
+        // Case A: Single Receipt / Payment Transfer Slip -> Auto-save transaction to Ledger!
+        if (smartDoc.docType === "RECEIPT_SINGLE" && smartDoc.receipt && smartDoc.receipt.totalAmount > 0) {
+          const r = smartDoc.receipt;
+          const itemsDesc =
+            r.items && r.items.length > 0
+              ? ` (${r.items.slice(0, 3).map((i) => i.name).join(", ")})`
+              : "";
+          const savedTx = await db.transaction.create({
+            data: {
+              amount: r.totalAmount,
+              type: "EXPENSE",
+              category: r.category || "Shopping & Groceries",
+              description: `${r.merchant}${itemsDesc}`,
+              source: "RECEIPT_OCR",
+              rawInput: `[Receipt Scan] ${r.merchant} | Items: ${r.items.map((i) => `${i.name} (${i.price})`).join(", ")}`,
+              currency: r.currency || currency,
+              accountId: accountId || null,
+              date: r.date ? new Date(r.date) : new Date(),
+            },
+          });
+
+          if (accountId) {
+            await db.account
+              .update({
+                where: { id: accountId },
+                data: { balance: { decrement: r.totalAmount } },
+              })
+              .catch(() => {});
+          }
+
+          return NextResponse.json({
+            success: true,
+            docType: "RECEIPT_SINGLE",
+            receipt: r,
+            transaction: savedTx,
+            message: `🧾 已自动识别小票并记入账本：${r.merchant} (${r.currency || currency} ${r.totalAmount.toFixed(2)}) [${r.category}]`,
+          });
+        }
+
+        // Case B: Image/File of Notes or To-Do list -> Auto-save Note / Todos!
+        if (smartDoc.docType === "TODO_OR_NOTE") {
+          const createdTodos = [];
+          if (Array.isArray(smartDoc.todos) && smartDoc.todos.length > 0) {
+            for (const td of smartDoc.todos) {
+              if (td.title) {
+                const savedTd = await db.todoTask.create({
+                  data: {
+                    title: td.title,
+                    priority: td.priority || "MEDIUM",
+                    status: "PENDING",
+                    dueDate: td.dueDate ? new Date(td.dueDate) : null,
+                  },
+                });
+                createdTodos.push(savedTd);
+              }
+            }
+          }
+
+          let savedNote = null;
+          if (smartDoc.noteContent || createdTodos.length === 0) {
+            savedNote = await db.note.create({
+              data: {
+                title: smartDoc.noteTitle || fileName || "文件提取便签",
+                content: smartDoc.noteContent || smartDoc.summaryMessage,
+                category: "General",
+                color: "#3b82f6",
+              },
+            });
+          }
+
+          return NextResponse.json({
+            success: true,
+            docType: "TODO_OR_NOTE",
+            note: savedNote,
+            todos: createdTodos,
+            message:
+              createdTodos.length > 0
+                ? `📋 已从图片/文件中自动提取并创建 ${createdTodos.length} 项待办任务！`
+                : `📝 已识别图片/文件内容并保存至便签：“${savedNote?.title}”！`,
+          });
+        }
+
+        // Case C: Multi-row Bank Statement / CSV -> Continue with full DB reconciliation
+        statement =
+          smartDoc.statement ||
+          (await parseBankStatementWithAI(
+            fileBase64,
+            resolvedMime,
+            userApiKey,
+            currency,
+            accounts
+          ));
       } catch (parseErr: any) {
         return NextResponse.json({
           success: false,
-          error: parseErr.message || "Failed to parse bank statement",
+          error: parseErr.message || "Failed to parse document",
         }, { status: 400 });
       }
 
