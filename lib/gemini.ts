@@ -167,14 +167,14 @@ export function isModelDeprecated(name: string): boolean {
   );
 }
 
-// Prioritized list of active, supported Gemini models (optimized for $10 monthly AI Studio credit efficiency)
+// Prioritized list of active, supported Gemini models (optimized for fast Free Tier & $10 monthly credit efficiency)
 export const CANDIDATE_MODELS = [
-  "gemini-4-hydrogen",
-  "gemini-3.8-flash",
   "gemini-3.5-flash-lite",
+  "gemini-3.5-flash",
+  "gemini-3.8-flash",
+  "gemini-4-hydrogen",
   "gemini-3.1-pro-preview",
   "gemini-3.7-flash",
-  "gemini-3.5-flash",
   "gemini-3.1-flash-lite",
   "gemini-3-flash-preview",
 ];
