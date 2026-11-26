@@ -48,6 +48,15 @@ const DEFAULT_PLATFORM_MODULES = [
     path: "/notes",
   },
   {
+    key: "file_converter_studio",
+    name: "File Studio (Word ↔ PDF & AI Editor)",
+    description: "Convert Word (.docx/.doc) ↔ PDF, edit documents with Gemini AI, compress/convert images, and edit CSV/JSON tables.",
+    category: "Productivity",
+    isEnabled: true,
+    icon: "BookOpen",
+    path: "/file-studio",
+  },
+  {
     key: "system_telemetry",
     name: "Dual PC & Cloud Hardware Monitor",
     description: "Live client GPU/Battery/Screen hardware diagnostics paired with Cloud Host CPU & RAM waveform telemetry.",

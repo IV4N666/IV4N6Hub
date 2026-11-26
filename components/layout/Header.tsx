@@ -76,6 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
     { name: "Transactions Ledger", path: "/transactions", icon: Receipt },
     { name: "Notes & Smart Tasks", path: "/notes", icon: StickyNote },
     { name: "WhatsApp AI Hub", path: "/whatsapp-hub", icon: MessageSquare },
+    { name: "File Studio (Word/PDF)", path: "/file-studio", icon: Receipt },
     { name: "PC & System Monitor", path: "/system-monitor", icon: Monitor },
     { name: "Modular Apps", path: "/modules", icon: Grid },
     { name: "Settings", path: "/settings", icon: Settings },

@@ -16,6 +16,7 @@ import {
   Monitor,
   StickyNote,
   Vault,
+  FileText,
 } from "lucide-react";
 
 interface SidebarProps {
@@ -50,6 +51,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ onOpenAddModal }) => {
       name: "WhatsApp AI Hub",
       path: "/whatsapp-hub",
       icon: MessageSquare,
+    },
+    {
+      name: "File Studio (Word/PDF)",
+      path: "/file-studio",
+      icon: FileText,
     },
     {
       name: "PC & System Monitor",
