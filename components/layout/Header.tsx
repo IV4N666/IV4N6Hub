@@ -123,6 +123,19 @@ export const Header: React.FC<HeaderProps> = ({
             <span className="ml-1 text-slate-400">PWA Ready</span>
           </div>
 
+          {/* Quick AI Command Palette Trigger (Ctrl+K) */}
+          <button
+            onClick={() => window.dispatchEvent(new CustomEvent("iv4n6-open-ai-bar"))}
+            title="Open AI Quick Assistant (Ctrl + K)"
+            className="flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-emerald-600/90 to-teal-600/90 hover:from-emerald-500 hover:to-teal-500 text-white border border-emerald-400/40 px-2.5 py-1.5 text-xs font-bold shadow-sm transition-all active:scale-95 cursor-pointer"
+          >
+            <Sparkles className="h-3.5 w-3.5 text-yellow-300" />
+            <span className="hidden sm:inline">AI 速记</span>
+            <kbd className="hidden md:inline-block rounded bg-black/30 px-1 py-0.2 text-[10px] font-mono text-emerald-100">
+              Ctrl+K
+            </kbd>
+          </button>
+
           {/* Currency Switcher */}
           <div className="flex items-center gap-1 rounded-lg bg-slate-800/80 p-1 border border-slate-700/60">
             <Coins className="ml-1.5 h-3.5 w-3.5 text-yellow-400 shrink-0" />

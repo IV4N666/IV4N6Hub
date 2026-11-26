@@ -136,8 +136,7 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
       id: "welcome-1",
       sender: "bot",
       type: "text",
-      text: "👋 Hi! I'm your IV4N6Hub Financial & Life Assistant on WhatsApp.\n\nHere is what you can tell me:\n• 💰 Expense: 'Spent 25 on fuel with cash' or '吃了午餐25块'\n• 📎 Bank Statement: Click 📎 to upload bank PDF or screenshot for auto-reconciliation & missing check!\n• 📋 Task: 'Remind me to buy groceries tomorrow' or '提醒我明天买菜'\n• 📝 Note: 'Note: door passcode is 8842' or '记一下：门禁密码是8842'\n• 💬 Missing details? Tell me what you did, and I'll follow up with questions!",
-      uploadStatus: "SAVED",
+      text: "👋 Hi! I'm your IV4N6Hub Financial & Life Assistant.\n\nHere is what you can tell me or paste (`Ctrl+V`):\n• 💰 Expense / Transfer: '吃午餐25块现金' or '从 Maybank 转 200 到 TNG'\n• 📊 Data Query: '我这个月总共花了多少钱？' or '目前各个账户余额多少？'\n• 📎 Receipt / Statement / CSV: Click 📎 or press `Ctrl+V` to paste any receipt photo, bank PDF, or CSV!\n• 📋 Task / Note: '提醒我明天买菜' or '记一下：门禁密码是8842'",
       timestamp: "12:00 PM",
     },
   ]);
@@ -172,13 +171,15 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
   const streamRef = useRef<MediaStream | null>(null);
   const isCancelledRef = useRef<boolean>(false);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const chatBottomRef = useRef<HTMLDivElement | null>(null);
+  const chatContainerRef = useRef<HTMLDivElement | null>(null);
   // Always-current ref so callbacks read latest messages without stale closure
   const messagesRef = useRef<ChatMessage[]>(messages);
   useEffect(() => { messagesRef.current = messages; }, [messages]);
 
   useEffect(() => {
-    chatBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (chatContainerRef.current) {
+      chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
+    }
   }, [messages, isProcessing]);
 
   const formatDuration = (seconds: number) => {
@@ -1232,7 +1233,10 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
         </div>
 
         {/* WhatsApp Chat Conversation Area */}
-        <div className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-4 space-y-3 bg-[#0b141a] bg-opacity-95 min-w-0">
+        <div
+          ref={chatContainerRef}
+          className="flex-1 overflow-y-auto overflow-x-hidden p-3.5 sm:p-4 space-y-3 bg-[#0b141a] bg-opacity-95 min-w-0"
+        >
           {messages.map((msg) => {
             const isUser = msg.sender === "user";
             const meta = msg.parsedData ? getCategoryMeta(msg.parsedData.category) : null;
@@ -1967,7 +1971,9 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                     msg.uploadStatus !== "UPDATED" &&
                     msg.uploadStatus !== "RECONCILIATION_REPORT" && (
                       <>
-                        <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">{msg.text}</p>
+                        <p className="whitespace-pre-wrap leading-relaxed break-words [overflow-wrap:anywhere] [word-break:break-word]">
+                          {msg.text.replace(/\*\*([^*]+)\*\*/g, "$1").replace(/^###\s+/gm, "📌 ")}
+                        </p>
                         <div className="mt-1 flex items-center justify-end text-[10px] text-slate-400">
                           <span>{msg.timestamp}</span>
                         </div>
@@ -1984,8 +1990,6 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
               <span>{processingStep}</span>
             </div>
           )}
-
-          <div ref={chatBottomRef} />
         </div>
 
         {/* Voice Recording Active Overlay */}

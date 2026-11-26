@@ -29,7 +29,7 @@ export const GlobalAIQuickBar: React.FC<GlobalAIQuickBarProps> = ({
   const inputRef = useRef<HTMLInputElement | null>(null);
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  // Global Ctrl+K / Cmd+K listener
+  // Global Ctrl+K / Cmd+K and custom header button listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
@@ -39,8 +39,13 @@ export const GlobalAIQuickBar: React.FC<GlobalAIQuickBarProps> = ({
         setIsOpen(false);
       }
     };
+    const handleOpenEvent = () => setIsOpen(true);
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("iv4n6-open-ai-bar", handleOpenEvent);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("iv4n6-open-ai-bar", handleOpenEvent);
+    };
   }, [isOpen]);
 
   useEffect(() => {
@@ -143,20 +148,7 @@ export const GlobalAIQuickBar: React.FC<GlobalAIQuickBarProps> = ({
 
   return (
     <>
-      {/* Floating Bottom-Right AI Trigger Button */}
-      <button
-        onClick={() => setIsOpen(true)}
-        title="AI 随处速记与查账 (快捷键 Ctrl + K)"
-        className="fixed bottom-20 md:bottom-6 right-4 md:right-6 z-40 flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 via-teal-600 to-blue-600 px-4 py-3 text-xs font-extrabold text-white shadow-xl shadow-emerald-600/30 border border-emerald-400/40 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-      >
-        <Sparkles className="h-4 w-4 text-yellow-300 animate-pulse" />
-        <span>AI 速记 / 查账</span>
-        <kbd className="hidden sm:inline-block rounded bg-black/30 px-1.5 py-0.5 text-[10px] font-mono text-emerald-200 border border-white/10">
-          Ctrl+K
-        </kbd>
-      </button>
-
-      {/* Command Palette Modal */}
+      {/* Command Palette Modal (Triggered via Top Header button or Ctrl+K anywhere) */}
       {isOpen && (
         <div className="fixed inset-0 z-50 flex items-start justify-center pt-16 sm:pt-24 p-4 bg-black/75 backdrop-blur-md animate-fadeIn">
           <div className="w-full max-w-xl rounded-3xl border border-emerald-500/40 bg-slate-900/95 shadow-2xl overflow-hidden">

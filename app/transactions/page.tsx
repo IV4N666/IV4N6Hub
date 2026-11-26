@@ -41,6 +41,7 @@ export default function TransactionsLedger() {
   // Edit State
   const [editingTx, setEditingTx] = useState<Transaction | null>(null);
   const [editAmount, setEditAmount] = useState("");
+  const [editType, setEditType] = useState<"EXPENSE" | "INCOME" | "TRANSFER">("EXPENSE");
   const [editCategory, setEditCategory] = useState("");
   const [editSubCategory, setEditSubCategory] = useState("");
   const [editTags, setEditTags] = useState("");
@@ -110,6 +111,7 @@ export default function TransactionsLedger() {
   const handleStartEdit = (tx: Transaction) => {
     setEditingTx(tx);
     setEditAmount(String(tx.amount));
+    setEditType(tx.type);
     setEditCategory(tx.category);
     setEditSubCategory(tx.subCategory || "");
     setEditTags(tx.tags || "");
@@ -127,6 +129,7 @@ export default function TransactionsLedger() {
         body: JSON.stringify({
           id: editingTx.id,
           amount: Number(editAmount),
+          type: editType,
           category: editCategory,
           subCategory: editSubCategory || null,
           tags: editTags || null,
@@ -161,8 +164,23 @@ export default function TransactionsLedger() {
     }
   };
 
-  const handleExportCSV = () => {
-    window.open("/api/finance/backup?format=csv", "_blank");
+  const handleExportCSV = async () => {
+    try {
+      const res = await fetch("/api/finance/backup?format=csv");
+      if (!res.ok) throw new Error("Failed to fetch CSV");
+      const csvText = await res.text();
+      const blob = new Blob(["\uFEFF" + csvText], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `IV4N6Hub_Transactions_${new Date().toISOString().split("T")[0]}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      alert("Failed to export CSV file");
+    }
   };
 
   const handleImportJSON = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -417,6 +435,38 @@ export default function TransactionsLedger() {
                               onChange={(e) => setEditAmount(e.target.value)}
                               placeholder="Amount"
                               className="w-24 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none font-mono"
+                            />
+                            <select
+                              value={editType}
+                              onChange={(e) => setEditType(e.target.value as any)}
+                              title="Transaction Type"
+                              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-white focus:border-blue-500 focus:outline-none"
+                            >
+                              <option value="EXPENSE">Expense (支出)</option>
+                              <option value="INCOME">Income (收入)</option>
+                              <option value="TRANSFER">Transfer (转账)</option>
+                            </select>
+                            <select
+                              value={editCategory}
+                              onChange={(e) => {
+                                setEditCategory(e.target.value);
+                                setEditSubCategory("");
+                              }}
+                              title="Category"
+                              className="rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-amber-300 focus:border-blue-500 focus:outline-none"
+                            >
+                              {Object.keys(CATEGORY_DEFINITIONS).map((cat) => (
+                                <option key={cat} value={cat}>
+                                  {cat}
+                                </option>
+                              ))}
+                            </select>
+                            <input
+                              type="text"
+                              value={editSubCategory}
+                              onChange={(e) => setEditSubCategory(e.target.value)}
+                              placeholder="SubCategory (可清空)"
+                              className="w-32 rounded-lg border border-slate-700 bg-slate-800 px-2 py-1 text-xs text-slate-200 placeholder-slate-500 focus:border-blue-500 focus:outline-none"
                             />
                             <select
                               value={editAccountId}

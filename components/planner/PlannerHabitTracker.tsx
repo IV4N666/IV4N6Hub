@@ -99,20 +99,20 @@ export const PlannerHabitTracker: React.FC<{
         </div>
       </div>
 
-      {/* Horizontal smooth swipe on phone, 5-col grid on desktop */}
-      <div className="flex sm:grid sm:grid-cols-5 gap-2 overflow-x-auto pb-1 sm:pb-0 no-scrollbar">
+      {/* Horizontal smooth swipe on phone, responsive grid on desktop */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2">
         {habits.map((habit) => {
           return (
             <button
               key={habit.id}
               onClick={() => handleToggleHabit(habit.id)}
-              className={`flex items-center justify-between gap-2 min-w-[140px] sm:min-w-0 rounded-xl px-2.5 py-2 border transition-all text-left shrink-0 sm:shrink ${
+              className={`flex items-center justify-between gap-2 min-w-0 rounded-xl px-2.5 py-2 border transition-all text-left ${
                 habit.isCompleted
                   ? "border-emerald-500/40 bg-emerald-950/25 text-emerald-200 shadow-sm"
                   : "border-slate-800 bg-slate-950/50 text-slate-300 hover:border-slate-700 hover:bg-slate-900/80 active:scale-98"
               }`}
             >
-              <div className="flex items-center gap-1.5 min-w-0">
+              <div className="flex items-center gap-1.5 min-w-0 flex-1">
                 <span className="text-sm shrink-0">{habit.icon}</span>
                 <span className="text-[11px] font-medium truncate">{habit.name}</span>
               </div>

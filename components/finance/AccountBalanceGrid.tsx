@@ -58,63 +58,64 @@ export const AccountBalanceGrid: React.FC<AccountBalanceGridProps> = ({
     <div className="space-y-4">
       {/* Net Worth & Assets Overview Bar */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-        <div className="relative overflow-hidden rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-950/40 via-slate-900/90 to-slate-950 p-4 shadow-lg backdrop-blur-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-blue-300">
+        <div className="relative overflow-hidden rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-950/40 via-slate-900/90 to-slate-950 p-4 shadow-lg backdrop-blur-md min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-blue-300 truncate">
               💎 Net Worth (净资产)
             </span>
-            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold text-blue-300">
+            <span className="rounded-full bg-blue-500/20 px-2 py-0.5 text-[10px] font-bold text-blue-300 shrink-0">
               Total Balance
             </span>
           </div>
-          <div className="mt-2 flex items-baseline gap-2">
+          <div className="mt-2 flex items-baseline gap-2 min-w-0">
             <span
-              className={`text-2xl sm:text-3xl font-black tracking-tight ${
+              className={`text-xl lg:text-2xl font-black tracking-tight truncate tabular-nums ${
                 summary.netWorth >= 0 ? "text-white" : "text-rose-400"
               }`}
             >
               {formatCurrency(summary.netWorth, currency)}
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-[11px] text-slate-400 truncate">
             Assets minus active credit & liabilities
           </p>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900/90 to-slate-950 p-4 shadow-lg backdrop-blur-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900/90 to-slate-950 p-4 shadow-lg backdrop-blur-md min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-emerald-300 truncate">
               📈 Total Assets (总资金)
             </span>
-            <span className="text-xs text-emerald-400 font-semibold">
+            <span className="text-xs text-emerald-400 font-semibold shrink-0">
               {accounts.filter((a) => a.type !== "CREDIT_CARD").length} Accounts
             </span>
           </div>
-          <div className="mt-2">
-            <span className="text-2xl sm:text-3xl font-black tracking-tight text-emerald-400">
+          <div className="mt-2 min-w-0">
+            <span className="block text-xl lg:text-2xl font-black tracking-tight text-emerald-400 truncate tabular-nums">
               {formatCurrency(summary.totalAssets, currency)}
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-[11px] text-slate-400 truncate">
             Cash, Bank deposits & E-Wallets
           </p>
         </div>
 
-        <div className="relative overflow-hidden rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-950/30 via-slate-900/90 to-slate-950 p-4 shadow-lg backdrop-blur-md">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-pink-300">
+        <div className="relative overflow-hidden rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-950/30 via-slate-900/90 to-slate-950 p-4 shadow-lg backdrop-blur-md min-w-0">
+          <div className="flex items-center justify-between gap-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-pink-300 truncate">
               💳 Credit & Liabilities (负债/待还)
             </span>
-            <span className="text-xs text-pink-400 font-semibold">
-              {accounts.filter((a) => a.type === "CREDIT_CARD").length} Cards
+            <span className="text-xs text-pink-400 font-semibold shrink-0">
+              {accounts.filter((a) => a.type === "CREDIT_CARD").length}{" "}
+              {accounts.filter((a) => a.type === "CREDIT_CARD").length === 1 ? "Card" : "Cards"}
             </span>
           </div>
-          <div className="mt-2">
-            <span className="text-2xl sm:text-3xl font-black tracking-tight text-pink-400">
+          <div className="mt-2 min-w-0">
+            <span className="block text-xl lg:text-2xl font-black tracking-tight text-pink-400 truncate tabular-nums">
               {formatCurrency(summary.totalLiabilities, currency)}
             </span>
           </div>
-          <p className="mt-1 text-[11px] text-slate-400">
+          <p className="mt-1 text-[11px] text-slate-400 truncate">
             Credit cards & outstanding balances
           </p>
         </div>

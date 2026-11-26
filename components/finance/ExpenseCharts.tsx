@@ -33,6 +33,7 @@ export const ExpenseCharts: React.FC<ExpenseChartsProps> = ({
   viewMode,
 }) => {
   const isMonthly = viewMode === "monthly";
+  const currencyPrefix = currency === "MYR" ? "RM" : currency === "SGD" ? "S$" : currency === "CNY" ? "¥" : "$";
 
   // Category data for Pie chart
   const categoryData = isMonthly
@@ -129,16 +130,16 @@ export const ExpenseCharts: React.FC<ExpenseChartsProps> = ({
           </div>
         )}
 
-        {/* Top 4 Categories List */}
-        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80">
-          {categoryData.slice(0, 4).map((cat, idx) => (
-            <div key={idx} className="flex items-center gap-2 text-xs">
+        {/* All Active Categories List */}
+        <div className="grid grid-cols-2 gap-2 pt-2 border-t border-slate-800/80 max-h-28 overflow-y-auto pr-1">
+          {categoryData.map((cat, idx) => (
+            <div key={idx} className="flex items-center gap-2 text-xs min-w-0">
               <span
                 className="h-2.5 w-2.5 rounded-full shrink-0"
                 style={{ backgroundColor: cat.color }}
               />
               <span className="truncate text-slate-300 font-medium">{cat.category}</span>
-              <span className="ml-auto font-semibold text-slate-100">
+              <span className="ml-auto font-semibold text-slate-100 shrink-0">
                 {cat.percentage}%
               </span>
             </div>
@@ -187,7 +188,7 @@ export const ExpenseCharts: React.FC<ExpenseChartsProps> = ({
                 </defs>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
                 <XAxis dataKey="day" stroke="#64748b" tickLine={false} textAnchor="end" fontSize={11} />
-                <YAxis stroke="#64748b" tickLine={false} fontSize={11} tickFormatter={(v) => `$${v}`} />
+                <YAxis stroke="#64748b" tickLine={false} fontSize={11} tickFormatter={(v) => `${currencyPrefix}${v}`} />
                 <Tooltip content={<CustomBarTooltip />} />
                 <Area
                   type="monotone"
@@ -212,7 +213,7 @@ export const ExpenseCharts: React.FC<ExpenseChartsProps> = ({
               <BarChart data={yearly.monthlyBreakdown} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" opacity={0.4} />
                 <XAxis dataKey="shortName" stroke="#64748b" tickLine={false} fontSize={11} />
-                <YAxis stroke="#64748b" tickLine={false} fontSize={11} tickFormatter={(v) => `$${v}`} />
+                <YAxis stroke="#64748b" tickLine={false} fontSize={11} tickFormatter={(v) => `${currencyPrefix}${v}`} />
                 <Tooltip content={<CustomBarTooltip />} />
                 <Bar dataKey="income" name="Income" fill="#22c55e" radius={[4, 4, 0, 0]} maxBarSize={30} />
                 <Bar dataKey="expense" name="Expense" fill="#ef4444" radius={[4, 4, 0, 0]} maxBarSize={30} />

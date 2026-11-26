@@ -244,38 +244,38 @@ export default function AccountsPage() {
 
       {/* Net Worth Summary Banner */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-950/40 via-slate-900/90 to-slate-950 p-5 shadow-xl">
-          <span className="text-xs font-bold uppercase tracking-wider text-blue-300">
+        <div className="rounded-2xl border border-blue-500/30 bg-gradient-to-br from-blue-950/40 via-slate-900/90 to-slate-950 p-5 shadow-xl min-w-0 overflow-hidden">
+          <span className="block text-xs font-bold uppercase tracking-wider text-blue-300 truncate">
             Total Net Worth (全局净资产)
           </span>
-          <div className="mt-2 text-3xl font-black tracking-tight text-white">
+          <div className="mt-2 text-xl lg:text-2xl font-black tracking-tight text-white truncate tabular-nums">
             {formatCurrency(summary.netWorth, currency)}
           </div>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-400 truncate">
             Liquid assets minus active credit obligations
           </p>
         </div>
 
-        <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900/90 to-slate-950 p-5 shadow-xl">
-          <span className="text-xs font-bold uppercase tracking-wider text-emerald-300">
+        <div className="rounded-2xl border border-emerald-500/30 bg-gradient-to-br from-emerald-950/30 via-slate-900/90 to-slate-950 p-5 shadow-xl min-w-0 overflow-hidden">
+          <span className="block text-xs font-bold uppercase tracking-wider text-emerald-300 truncate">
             Total Cash & Assets (总流动资产)
           </span>
-          <div className="mt-2 text-3xl font-black tracking-tight text-emerald-400">
+          <div className="mt-2 text-xl lg:text-2xl font-black tracking-tight text-emerald-400 truncate tabular-nums">
             {formatCurrency(summary.totalAssets, currency)}
           </div>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-400 truncate">
             Deposits across {accounts.filter((a) => a.type !== "CREDIT_CARD").length} liquid accounts
           </p>
         </div>
 
-        <div className="rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-950/30 via-slate-900/90 to-slate-950 p-5 shadow-xl">
-          <span className="text-xs font-bold uppercase tracking-wider text-pink-300">
+        <div className="rounded-2xl border border-pink-500/30 bg-gradient-to-br from-pink-950/30 via-slate-900/90 to-slate-950 p-5 shadow-xl min-w-0 overflow-hidden">
+          <span className="block text-xs font-bold uppercase tracking-wider text-pink-300 truncate">
             Total Liabilities (待还账单/信用卡)
           </span>
-          <div className="mt-2 text-3xl font-black tracking-tight text-pink-400">
+          <div className="mt-2 text-xl lg:text-2xl font-black tracking-tight text-pink-400 truncate tabular-nums">
             {formatCurrency(summary.totalLiabilities, currency)}
           </div>
-          <p className="mt-1 text-xs text-slate-400">
+          <p className="mt-1 text-xs text-slate-400 truncate">
             Credit cards & outstanding balances
           </p>
         </div>

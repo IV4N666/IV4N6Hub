@@ -543,39 +543,39 @@ export default function NotesAndTasksPage() {
             )}
           </button>
 
-          <div className="flex flex-1 sm:flex-initial rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs justify-center">
+          <div className="flex flex-1 sm:flex-initial rounded-xl bg-slate-900 border border-slate-800 p-1 text-xs justify-center shrink-0">
             <button
               onClick={() => setActiveTab("PLANNER")}
-              className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 font-extrabold transition-all text-xs ${
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 font-extrabold transition-all text-xs whitespace-nowrap shrink-0 ${
                 activeTab === "PLANNER"
                   ? "bg-gradient-to-r from-amber-600 to-orange-600 text-white shadow-md shadow-orange-600/30"
                   : "text-slate-400 hover:text-white"
               }`}
             >
               <CalendarIcon className="h-3.5 w-3.5 shrink-0" />
-              <span>计划本<span className="hidden sm:inline">模式</span></span>
+              <span>计划本</span>
             </button>
             <button
               onClick={() => setActiveTab("TODOS")}
-              className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 font-bold transition-all text-xs ${
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 font-bold transition-all text-xs whitespace-nowrap shrink-0 ${
                 activeTab === "TODOS"
                   ? "bg-blue-600 text-white shadow-md"
                   : "text-slate-400 hover:text-white"
               }`}
             >
               <CheckSquare className="h-3.5 w-3.5 shrink-0" />
-              <span>清单<span className="ml-1 text-[11px] opacity-80">({pendingCount})</span></span>
+              <span>清单 ({pendingCount})</span>
             </button>
             <button
               onClick={() => setActiveTab("NOTES")}
-              className={`flex flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 font-bold transition-all text-xs ${
+              className={`flex items-center justify-center gap-1.5 rounded-lg px-2.5 sm:px-3 py-1.5 font-bold transition-all text-xs whitespace-nowrap shrink-0 ${
                 activeTab === "NOTES"
                   ? "bg-purple-600 text-white shadow-md"
                   : "text-slate-400 hover:text-white"
               }`}
             >
               <StickyNote className="h-3.5 w-3.5 shrink-0" />
-              <span>便签<span className="ml-1 text-[11px] opacity-80">({notes.length})</span></span>
+              <span>便签 ({notes.length})</span>
             </button>
           </div>
         </div>
