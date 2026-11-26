@@ -222,6 +222,14 @@ export default function TransactionsLedger() {
             <span>OCR</span>
           </span>
         );
+      case "AI_STATEMENT":
+      case "BANK_STATEMENT":
+        return (
+          <span className="flex items-center gap-1 rounded-md bg-cyan-500/15 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 border border-cyan-500/30">
+            <Sparkles className="h-3 w-3 text-cyan-400" />
+            <span>Statement</span>
+          </span>
+        );
       case "RECURRING":
         return (
           <span className="flex items-center gap-1 rounded-md bg-indigo-500/15 px-2 py-0.5 text-[10px] font-semibold text-indigo-300 border border-indigo-500/30">
@@ -334,6 +342,7 @@ export default function TransactionsLedger() {
             <option value="WHATSAPP_VOICE">WhatsApp Voice</option>
             <option value="WHATSAPP_TEXT">WhatsApp Text</option>
             <option value="RECEIPT_OCR">AI Receipt OCR</option>
+            <option value="AI_STATEMENT">Bank Statement (AI对账)</option>
             <option value="RECURRING">Auto Subscription</option>
             <option value="WEB_MANUAL">Web Manual</option>
           </select>

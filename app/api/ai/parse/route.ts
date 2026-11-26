@@ -238,8 +238,21 @@ export async function POST(request: NextRequest) {
       });
 
       if (latestTx) {
-        // Revert account balance
-        if (latestTx.accountId) {
+      // Revert account balance
+        if (latestTx.type === "TRANSFER") {
+          if (latestTx.accountId) {
+            await db.account.update({
+              where: { id: latestTx.accountId },
+              data: { balance: { increment: latestTx.amount } },
+            }).catch(() => {});
+          }
+          if (latestTx.toAccountId) {
+            await db.account.update({
+              where: { id: latestTx.toAccountId },
+              data: { balance: { decrement: latestTx.amount } },
+            }).catch(() => {});
+          }
+        } else if (latestTx.accountId) {
           if (latestTx.type === "EXPENSE") {
             await db.account.update({
               where: { id: latestTx.accountId },
@@ -506,15 +519,30 @@ export async function POST(request: NextRequest) {
             : text,
           currency: parsedResult.currency || defaultCurrency,
           accountId: parsedResult.accountId || null,
+          toAccountId: parsedResult.type === "TRANSFER" ? parsedResult.toAccountId || null : null,
           date: parsedResult.date ? new Date(parsedResult.date) : new Date(),
         },
         include: {
           account: true,
+          toAccount: true,
         },
       });
 
-      // Update account balance
-      if (parsedResult.accountId) {
+      // Update account balance (including two-way TRANSFER support)
+      if (parsedResult.type === "TRANSFER") {
+        if (parsedResult.accountId) {
+          await db.account.update({
+            where: { id: parsedResult.accountId },
+            data: { balance: { decrement: parsedResult.amount } },
+          }).catch(() => {});
+        }
+        if (parsedResult.toAccountId) {
+          await db.account.update({
+            where: { id: parsedResult.toAccountId },
+            data: { balance: { increment: parsedResult.amount } },
+          }).catch(() => {});
+        }
+      } else if (parsedResult.accountId) {
         if (parsedResult.type === "EXPENSE") {
           await db.account.update({
             where: { id: parsedResult.accountId },

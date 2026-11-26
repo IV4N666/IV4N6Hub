@@ -519,8 +519,8 @@ ${STANDARD_CATEGORIES.join(", ")}
 
 Analyze the user's intent and classify into one of the following:
 1. "EXPENSE" / "INCOME" / "TRANSFER":
-   - Logging money spent or received.
-    - Extract: amount (number), category (best match), subCategory (if identifiable), description (concise item/merchant), currency, date (ISO YYYY-MM-DD), and accountId matching one from the Available Accounts if the user mentioned it (e.g. "Cash", "现金", "Maybank", "Bank", "Touch n Go", "TnG", "Credit Card", "刷卡"). If no account was mentioned, leave accountId as null.
+   - Logging money spent, received, or transferred between user accounts.
+    - Extract: amount (number), category (best match, or "Transfer" for TRANSFER), subCategory (if identifiable), description (concise item/merchant), currency, date (ISO YYYY-MM-DD), accountId (source/payment account ID from Available Accounts), and toAccountId (destination account ID when type is "TRANSFER", e.g. "从 Maybank 转 200 到 Touch n Go" -> accountId = Maybank ID, toAccountId = Touch n Go ID). If no account was mentioned, leave accountId/toAccountId as null.
     - Specialized Category & SubCategory Mapping Rules:
       * 汽车汽油费/打油: "打油", "汽油", "车油", "加油", "RON95", "RON97", "Shell", "Petronas", "Caltex", "Petron", "BHPetrol" -> Category: "Transport & Fuel", subCategory: "Petrol & Fuel (汽车汽油/打油)".
       * 宵夜: "宵夜", "supper", "深夜外卖", "烧烤", "撸串", "lok lok", "深夜糖水" -> Category: "Food & Dining", subCategory: "Supper / Late-Night (宵夜)".
@@ -583,6 +583,8 @@ Return ONLY a valid JSON conforming to this schema:
   "tags": string or null,
   "accountId": string or null,
   "accountName": string or null,
+  "toAccountId": string or null,
+  "toAccountName": string or null,
   "todoTitle": string or null,
   "todoDueDate": string or null,
   "todoPriority": "HIGH" | "MEDIUM" | "LOW" or null,
@@ -602,7 +604,7 @@ Return ONLY a valid JSON conforming to this schema:
       const responseText = cleanJsonText(result.response.text());
       const parsed = JSON.parse(responseText);
 
-      // Verify accountId against provided accounts list
+      // Verify accountId and toAccountId against provided accounts list
       let matchedAccountId = parsed.accountId || null;
       let matchedAccountName = parsed.accountName || null;
       if (matchedAccountId) {
@@ -614,10 +616,26 @@ Return ONLY a valid JSON conforming to this schema:
         }
       }
 
+      let matchedToAccountId = parsed.toAccountId || null;
+      let matchedToAccountName = parsed.toAccountName || null;
+      if (matchedToAccountId) {
+        const foundTo = accounts.find((a) => a.id === matchedToAccountId);
+        if (foundTo) {
+          matchedToAccountName = foundTo.name;
+        } else {
+          matchedToAccountId = null;
+        }
+      }
+
       return {
         amount: Math.abs(Number(parsed.amount) || 0),
         type: parsed.type === "INCOME" ? "INCOME" : parsed.type === "TRANSFER" ? "TRANSFER" : "EXPENSE",
-        category: STANDARD_CATEGORIES.includes(parsed.category) ? parsed.category : "Other",
+        category:
+          parsed.type === "TRANSFER"
+            ? "Transfer"
+            : STANDARD_CATEGORIES.includes(parsed.category)
+            ? parsed.category
+            : "Other",
         subCategory: parsed.subCategory || null,
         description: parsed.description || text,
         currency: parsed.currency || defaultCurrency,
@@ -626,6 +644,8 @@ Return ONLY a valid JSON conforming to this schema:
         confidence: Number(parsed.confidence) || 0.95,
         accountId: matchedAccountId,
         accountName: matchedAccountName,
+        toAccountId: matchedToAccountId,
+        toAccountName: matchedToAccountName,
         intent: parsed.intent || (Number(parsed.amount) > 0 ? "EXPENSE" : "CLARIFICATION"),
         isUpdate: parsed.intent === "UPDATE_TRANSACTION",
         cancelTarget: parsed.cancelTarget || (parsed.intent === "CANCEL" ? "LAST" : undefined),
@@ -743,6 +763,8 @@ Extract and return ONLY a JSON object:
   "tags": string or null,
   "accountId": string or null,
   "accountName": string or null,
+  "toAccountId": string or null,
+  "toAccountName": string or null,
   "todoTitle": string or null,
   "todoDueDate": string or null,
   "todoPriority": "HIGH" | "MEDIUM" | "LOW" or null,

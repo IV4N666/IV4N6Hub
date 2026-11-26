@@ -8,6 +8,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileNav } from "@/components/layout/MobileNav";
 import { AddTransactionModal } from "@/components/finance/AddTransactionModal";
 import { AnimatedCyberBackground } from "@/components/layout/AnimatedCyberBackground";
+import { GlobalAIQuickBar } from "@/components/layout/GlobalAIQuickBar";
 
 export default function RootLayout({
   children,
@@ -90,6 +91,8 @@ export default function RootLayout({
             </div>
 
             <MobileNav onOpenAddModal={() => setIsAddModalOpen(true)} />
+
+            <GlobalAIQuickBar currency={currency} />
 
             <AddTransactionModal
               isOpen={isAddModalOpen}

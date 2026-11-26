@@ -199,6 +199,8 @@ export interface AIParsedExpense {
   reasoning?: string;
   accountId?: string | null;
   accountName?: string | null;
+  toAccountId?: string | null;
+  toAccountName?: string | null;
   replyMessage?: string;
   intent?: SmartIntentType;
   isUpdate?: boolean;

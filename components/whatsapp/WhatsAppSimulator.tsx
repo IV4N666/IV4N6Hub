@@ -346,6 +346,26 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
 
     // Clear input so same file can be re-selected
     e.target.value = "";
+    await processUploadedFile(file);
+  };
+
+  const handleClipboardPaste = async (e: React.ClipboardEvent<HTMLInputElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i];
+      if (item.type.startsWith("image/") || item.type === "application/pdf") {
+        e.preventDefault();
+        const file = item.getAsFile();
+        if (file) {
+          await processUploadedFile(file);
+          return;
+        }
+      }
+    }
+  };
+
+  const processUploadedFile = async (file: File) => {
 
     const fileSizeStr =
       file.size > 1024 * 1024
@@ -2060,11 +2080,12 @@ export const WhatsAppSimulator: React.FC<WhatsAppSimulatorProps> = ({
                 ? `💬 请输入说明（例如：还朋友钱 / 聚餐分账 / 晚餐）...`
                 : isRecording
                 ? "Recording voice... Click Cancel or Send"
-                : "输入记账（如：打油50、宵夜35），或点 📎 上传账单..."
+                : "输入记账/查账/转账，或直接 Ctrl+V 粘贴截图 / 点 📎 上传..."
             }
             disabled={isRecording || isProcessing}
             value={inputMessage}
             onChange={(e) => setInputMessage(e.target.value)}
+            onPaste={handleClipboardPaste}
             onKeyDown={(e) => e.key === "Enter" && handleSendText()}
             className="flex-1 rounded-xl bg-[#2a3942] px-4 py-2.5 text-xs text-white placeholder-slate-400 outline-none focus:ring-1 focus:ring-emerald-500 min-w-0"
           />

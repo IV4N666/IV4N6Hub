@@ -30,23 +30,29 @@ export async function GET(request: NextRequest) {
     if (source && source !== "ALL") {
       where.source = source;
     }
+    const andConditions: any[] = [];
+
     if (accountId && accountId !== "ALL") {
-      where.OR = [
-        { accountId: accountId },
-        { toAccountId: accountId },
-      ];
+      andConditions.push({
+        OR: [{ accountId: accountId }, { toAccountId: accountId }],
+      });
     }
     if (tag) {
       where.tags = { contains: tag };
     }
     if (query) {
-      where.OR = [
-        { description: { contains: query, mode: "insensitive" } },
-        { category: { contains: query, mode: "insensitive" } },
-        { subCategory: { contains: query, mode: "insensitive" } },
-        { tags: { contains: query, mode: "insensitive" } },
-        { rawInput: { contains: query, mode: "insensitive" } },
-      ];
+      andConditions.push({
+        OR: [
+          { description: { contains: query, mode: "insensitive" } },
+          { category: { contains: query, mode: "insensitive" } },
+          { subCategory: { contains: query, mode: "insensitive" } },
+          { tags: { contains: query, mode: "insensitive" } },
+          { rawInput: { contains: query, mode: "insensitive" } },
+        ],
+      });
+    }
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
     }
     if (month) {
       const [y, m] = month.split("-").map(Number);

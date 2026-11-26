@@ -91,12 +91,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
 
   if (!isOpen) return null;
 
-  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
+  const processImageFile = (file: File) => {
     setError(null);
     setOcrLoading(true);
+    setEntryMode("OCR");
 
     const reader = new FileReader();
     reader.onload = async () => {
@@ -132,6 +130,27 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
       }
     };
     reader.readAsDataURL(file);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    processImageFile(file);
+  };
+
+  const handleModalPaste = (e: React.ClipboardEvent<HTMLDivElement>) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.startsWith("image/")) {
+        const file = items[i].getAsFile();
+        if (file) {
+          e.preventDefault();
+          processImageFile(file);
+          return;
+        }
+      }
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -205,7 +224,10 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
   const currentCategoryMeta = getCategoryMeta(category);
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fadeIn">
+    <div
+      onPaste={handleModalPaste}
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4 backdrop-blur-md animate-fadeIn"
+    >
       <div className="w-full max-w-lg rounded-3xl border border-slate-700/80 bg-slate-900/95 p-5 sm:p-6 shadow-2xl backdrop-blur-2xl max-h-[90vh] overflow-y-auto">
         <div className="flex items-center justify-between border-b border-slate-800 pb-4">
           <div className="flex items-center gap-2.5">
@@ -284,7 +306,7 @@ export const AddTransactionModal: React.FC<AddTransactionModalProps> = ({
                 </div>
                 <div>
                   <p className="text-sm font-bold text-white">
-                    {ocrLoading ? "Analyzing receipt with Gemini Vision..." : "Click or Snap Receipt Photo"}
+                    {ocrLoading ? "Analyzing receipt with Gemini Vision..." : "Click, Snap, or Ctrl+V Paste Receipt Image"}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
                     Supports JPG, PNG receipts, bills & dining invoices

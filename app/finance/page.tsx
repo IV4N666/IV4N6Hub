@@ -57,6 +57,29 @@ export default function FinanceDashboard() {
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
   const [modalInitialType, setModalInitialType] = useState<TransactionType>("EXPENSE");
   const [isRecurringModalOpen, setIsRecurringModalOpen] = useState(false);
+  const [aiAdvice, setAiAdvice] = useState<string | null>(null);
+  const [aiAdviceLoading, setAiAdviceLoading] = useState(false);
+
+  const handleGenerateAiAdvice = async () => {
+    setAiAdviceLoading(true);
+    try {
+      const res = await fetch("/api/ai/parse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text: "请帮我查询并诊断本月的财务收支情况、分类支出占比和账户余额，并给出3条简短实用的理财省钱建议",
+          defaultCurrency: currency,
+          autoSave: false,
+        }),
+      });
+      const data = await res.json();
+      setAiAdvice(data.message || data.parsed?.replyMessage || "已完成财务分析。");
+    } catch (e: any) {
+      setAiAdvice(`生成诊断失败: ${e.message}`);
+    } finally {
+      setAiAdviceLoading(false);
+    }
+  };
 
   const currentYearMonth = format(currentDate, "yyyy-MM");
   const currentYear = currentDate.getFullYear();
@@ -102,6 +125,9 @@ export default function FinanceDashboard() {
 
   useEffect(() => {
     fetchData();
+    const onDataUpdated = () => fetchData();
+    window.addEventListener("iv4n6-data-updated", onDataUpdated);
+    return () => window.removeEventListener("iv4n6-data-updated", onDataUpdated);
   }, [currentYearMonth, currentYear]);
 
   const handlePrevMonth = () => setCurrentDate((d) => subMonths(d, 1));
@@ -160,6 +186,15 @@ export default function FinanceDashboard() {
 
           <div className="flex items-center gap-2">
             <button
+              onClick={handleGenerateAiAdvice}
+              disabled={aiAdviceLoading}
+              className="flex items-center gap-1.5 rounded-xl bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 px-3.5 py-2 text-xs font-bold text-amber-200 transition-all active:scale-95 shrink-0 cursor-pointer"
+            >
+              <Sparkles className={`h-4 w-4 text-amber-400 ${aiAdviceLoading ? "animate-spin" : ""}`} />
+              <span>{aiAdviceLoading ? "AI 诊断中..." : "AI 财务诊断"}</span>
+            </button>
+
+            <button
               onClick={() => setIsRecurringModalOpen(true)}
               className="flex items-center gap-1.5 rounded-xl bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 px-3.5 py-2 text-xs font-bold text-purple-200 transition-all active:scale-95 shrink-0"
             >
@@ -177,6 +212,27 @@ export default function FinanceDashboard() {
           </div>
         </div>
       </div>
+
+      {/* AI Monthly Financial Diagnosis Expandable Card */}
+      {aiAdvice && (
+        <div className="rounded-2xl border border-amber-500/40 bg-gradient-to-br from-amber-950/30 via-slate-900/95 to-slate-950 p-5 shadow-xl space-y-2 animate-fadeIn">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs font-bold text-amber-300">
+              <Sparkles className="h-4 w-4 text-amber-400" />
+              <span>Gemini AI 月度财务诊断与省钱建议</span>
+            </div>
+            <button
+              onClick={() => setAiAdvice(null)}
+              className="text-xs text-slate-400 hover:text-white px-2 py-0.5 rounded bg-slate-800"
+            >
+              收起 ✕
+            </button>
+          </div>
+          <div className="text-xs text-slate-200 whitespace-pre-wrap leading-relaxed pt-1">
+            {aiAdvice}
+          </div>
+        </div>
+      )}
 
       {/* Multi-Account Balances & Net Worth (ezBookkeeping style) */}
       <AccountBalanceGrid

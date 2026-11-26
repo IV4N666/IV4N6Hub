@@ -18,7 +18,7 @@ import { WhatsAppWebhookGuide } from "@/components/whatsapp/WhatsAppWebhookGuide
 
 export default function WhatsAppHubPage() {
   const [activeTab, setActiveTab] = useState<"simulator" | "webhook" | "apikey">("simulator");
-  const [currency, setCurrency] = useState("USD");
+  const [currency, setCurrency] = useState("MYR");
   const [apiKey, setApiKey] = useState("");
   const [maskedKey, setMaskedKey] = useState("");
   const [hasKey, setHasKey] = useState(false);
